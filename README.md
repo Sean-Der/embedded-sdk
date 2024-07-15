@@ -16,6 +16,14 @@
 Docs and guides at [https://docs.livekit.io](https://docs.livekit.io).
 
 ## Installation
+
+Make sure that `set-target` is the platform you are targetting. Example below is an `esp32s3`
+
+* `idf.py set-target esp32s3`
+* `idf.py menuconfig`
+* `idf.py build`
+* `sudo -E idf.py flash`
+
 ## Usage
 
 <!--BEGIN_REPO_NAV-->

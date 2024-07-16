@@ -18,9 +18,16 @@ Docs and guides at [https://docs.livekit.io](https://docs.livekit.io).
 ## Installation
 
 Make sure that `set-target` is the platform you are targetting. Example below is an `esp32s3`
-
 * `idf.py set-target esp32s3`
+
+Configure device specific settings. None needed at this time
 * `idf.py menuconfig`
+
+Set your Wifi SSID + Password as env variables
+* `export WIFI_SSID=foo`
+* `export WIFI_PASSWORD=bar`
+
+Build and flash
 * `idf.py build`
 * `sudo -E idf.py flash`
 

@@ -1,6 +1,7 @@
 #include "nvs_flash.h"
 
 extern void app_wifi(void);
+extern void app_websocket(void);
 
 extern "C" {
 extern void app_main(void);
@@ -16,4 +17,5 @@ void app_main(void) {
   ESP_ERROR_CHECK(ret);
 
   app_wifi();
+  app_websocket();
 }

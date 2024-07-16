@@ -52,4 +52,3 @@ void app_wifi(void) {
       static_cast<wifi_interface_t>(ESP_IF_WIFI_STA), &wifi_config));
   ESP_ERROR_CHECK(esp_wifi_connect());
 }
-

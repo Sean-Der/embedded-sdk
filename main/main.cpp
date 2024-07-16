@@ -2,6 +2,10 @@
 
 extern void app_wifi(void);
 
+extern "C" {
+extern void app_main(void);
+}
+
 void app_main(void) {
   esp_err_t ret = nvs_flash_init();
   if (ret == ESP_ERR_NVS_NO_FREE_PAGES ||

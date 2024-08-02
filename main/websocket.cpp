@@ -35,7 +35,7 @@ static void app_websocket_event_handler(void *handler_args,
 void app_websocket(void) {
   esp_websocket_client_config_t ws_cfg;
   memset(&ws_cfg, 0, sizeof(ws_cfg));
-  ws_cfg.uri = WEBSOCKET_URI;
+  ws_cfg.uri = LIVEKIT_URL;
 
   auto client = esp_websocket_client_init(&ws_cfg);
   esp_websocket_register_events(client, WEBSOCKET_EVENT_ANY,

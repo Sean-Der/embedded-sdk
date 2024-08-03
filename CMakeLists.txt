@@ -8,11 +8,14 @@ add_compile_definitions(WIFI_SSID="$ENV{WIFI_SSID}")
 add_compile_definitions(WIFI_PASSWORD="$ENV{WIFI_PASSWORD}")
 add_compile_definitions(LIVEKIT_URL="$ENV{LIVEKIT_URL}")
 
-execute_process(
-  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-  COMMAND "protoc" "--c_out=deps/livekit-protocol-generated" "-I=./deps/livekit-protocol" "livekit_rtc.proto" "livekit_models.proto"
-  COMMAND_ERROR_IS_FATAL ANY
-)
+if(NOT DEFINED ENV{SKIP_PROTOBUF_GENERATE})
+  execute_process(
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    COMMAND "protoc" "--c_out=deps/livekit-protocol-generated" "-I=./deps/livekit-protocol" "livekit_rtc.proto" "livekit_models.proto"
+    COMMAND_ERROR_IS_FATAL ANY
+  )
+endif()
+
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(src)

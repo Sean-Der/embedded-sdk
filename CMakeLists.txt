@@ -16,6 +16,6 @@ if(NOT DEFINED ENV{SKIP_PROTOBUF_GENERATE})
   )
 endif()
 
-
+set(EXTRA_COMPONENT_DIRS src)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(src)

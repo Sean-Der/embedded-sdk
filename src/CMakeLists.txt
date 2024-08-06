@@ -5,4 +5,5 @@ idf_component_register(
 			 "main.cpp"
 			 "websocket.cpp"
 			 "wifi.cpp"
+	REQUIRES driver protobuf-c esp_wifi nvs_flash
   INCLUDE_DIRS "." "../deps/livekit-protocol-generated")

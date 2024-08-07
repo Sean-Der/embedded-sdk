@@ -7,6 +7,9 @@ on:
 
 jobs:
   build:
+    strategy:
+      matrix:
+        target: [esp32s3, linux]
 
     runs-on: ubuntu-latest
 
@@ -36,5 +39,5 @@ jobs:
     - name: esp-idf build
       uses: espressif/esp-idf-ci-action@v1
       with:
-        esp_idf_version: v5.1.3
-        target: esp32s3
+        esp_idf_version: v5.4.0
+        target: ${{ matrix.target }}

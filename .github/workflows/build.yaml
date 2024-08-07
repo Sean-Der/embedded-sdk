@@ -19,25 +19,10 @@ jobs:
       with:
         submodules: 'recursive'
 
-    - name: Install Protoc
-      uses: awalsh128/cache-apt-pkgs-action@latest
-      with:
-        packages: protobuf-compiler protobuf-c-compiler
-        version: 1.0
-
-    - name: Generate protobuf
+    - name: Build
       run: |
-        protoc --c_out=deps/livekit-protocol-generated -I=./deps/livekit-protocol livekit_rtc.proto livekit_models.proto
-
-    - name: Set Env variables
-      run: |
-        sed -i '1s;^;set(ENV{WIFI_SSID} a)\n;' CMakeLists.txt
-        sed -i '1s;^;set(ENV{WIFI_PASSWORD} a)\n;' CMakeLists.txt
-        sed -i '1s;^;set(ENV{LIVEKIT_URL} a)\n;' CMakeLists.txt
-        sed -i '1s;^;set(ENV{SKIP_PROTOBUF_GENERATE} a)\n;' CMakeLists.txt
-
-    - name: esp-idf build
-      uses: espressif/esp-idf-ci-action@v1
-      with:
-        esp_idf_version: v5.4.0
-        target: ${{ matrix.target }}
+        docker run -v $PWD:/project -w /project -u 0 \
+        -e HOME=/tmp -e WIFI_SSID=A -e WIFI_PASSWORD=B -e LIVEKIT_URL=X \
+        espressif/idf:latest \
+        /bin/bash -c 'apt update && apt install -y protobuf-compiler protobuf-c-compiler && idf.py --preview set-target ${{ matrix.target }} && idf.py build'
+      shell: bash

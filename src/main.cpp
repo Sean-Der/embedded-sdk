@@ -1,3 +1,4 @@
+#ifndef LINUX_BUILD
 #include "nvs_flash.h"
 
 extern void app_wifi(void);
@@ -15,3 +16,8 @@ extern "C" void app_main(void) {
   app_wifi();
   app_websocket();
 }
+#else
+extern void app_websocket(void);
+
+extern "C" void app_main(void) { app_websocket(); }
+#endif

@@ -8,6 +8,18 @@ add_compile_definitions(WIFI_SSID="$ENV{WIFI_SSID}")
 add_compile_definitions(WIFI_PASSWORD="$ENV{WIFI_PASSWORD}")
 add_compile_definitions(LIVEKIT_URL="$ENV{LIVEKIT_URL}")
 
+set(COMPONENTS src)
+set(EXTRA_COMPONENT_DIRS "src")
+
+if(IDF_TARGET STREQUAL linux)
+	add_compile_definitions(LINUX_BUILD=1)
+  list(APPEND EXTRA_COMPONENT_DIRS
+    $ENV{IDF_PATH}/examples/protocols/linux_stubs/esp_stubs
+    $ENV{IDF_PATH}/tools/mocks/driver
+    $ENV{IDF_PATH}/tools/mocks/esp_timer
+    )
+endif()
+
 if(NOT DEFINED ENV{SKIP_PROTOBUF_GENERATE})
   execute_process(
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
@@ -16,6 +28,5 @@ if(NOT DEFINED ENV{SKIP_PROTOBUF_GENERATE})
   )
 endif()
 
-set(EXTRA_COMPONENT_DIRS src)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(src)

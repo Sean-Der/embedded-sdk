@@ -9,14 +9,14 @@ add_compile_definitions(WIFI_PASSWORD="$ENV{WIFI_PASSWORD}")
 add_compile_definitions(LIVEKIT_URL="$ENV{LIVEKIT_URL}")
 
 set(COMPONENTS src)
-set(EXTRA_COMPONENT_DIRS "src")
+set(EXTRA_COMPONENT_DIRS "src" "deps/esp-protocols/components/esp_websocket_client")
 
 if(IDF_TARGET STREQUAL linux)
 	add_compile_definitions(LINUX_BUILD=1)
   list(APPEND EXTRA_COMPONENT_DIRS
     $ENV{IDF_PATH}/examples/protocols/linux_stubs/esp_stubs
-    $ENV{IDF_PATH}/tools/mocks/driver
-    $ENV{IDF_PATH}/tools/mocks/esp_timer
+    "deps/esp-protocols/common_components/linux_compat/esp_timer"
+    "deps/esp-protocols/common_components/linux_compat/freertos"
     )
 endif()
 

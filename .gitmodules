@@ -1,3 +1,6 @@
 [submodule "deps/livekit-protocol"]
 	path = deps/livekit-protocol
 	url = https://github.com/livekit/protocol.git
+[submodule "deps/esp-protocols"]
+	path = deps/esp-protocols
+	url = https://github.com/espressif/esp-protocols.git

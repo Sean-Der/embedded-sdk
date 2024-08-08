@@ -1,10 +1,10 @@
 #include "esp_event.h"
 
-#ifndef LINUX_BUILD
-#include "nvs_flash.h"
-
 extern void app_wifi(void);
 extern void app_websocket(void);
+
+#ifndef LINUX_BUILD
+#include "nvs_flash.h"
 
 extern "C" void app_main(void) {
   esp_err_t ret = nvs_flash_init();
@@ -20,9 +20,7 @@ extern "C" void app_main(void) {
   app_websocket();
 }
 #else
-extern void app_websocket(void);
-
-extern "C" void app_main(void) {
+int main(void) {
   ESP_ERROR_CHECK(esp_event_loop_create_default());
   app_websocket();
 }

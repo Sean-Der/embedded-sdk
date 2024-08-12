@@ -1,5 +1,6 @@
 set(COMMON_SRC
-	"main.cpp"
+	"websocket.cpp"
+	"esp32_websocket.cpp"
 )
 
 if(IDF_TARGET STREQUAL linux)
@@ -10,7 +11,6 @@ if(IDF_TARGET STREQUAL linux)
 else()
 	idf_component_register(
 		SRCS ${COMMON_SRC}
-	  	INCLUDE_DIRS "." "../components/ws" 
-	  	PRIV_REQUIRES ws wifi
-	)
+	  	INCLUDE_DIRS "."
+		REQUIRES driver esp_wifi nvs_flash)
 endif()

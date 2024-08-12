@@ -1,8 +1,12 @@
-#ifndef LINUX_BUILD
+// #ifndef LINUX_BUILD
 #include "nvs_flash.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
+// #include "esp32_websocket.hpp"
 
 extern void app_wifi(void);
-extern void app_websocket(void);
+// extern void app_websocket(void);
 
 extern "C" void app_main(void) {
   esp_err_t ret = nvs_flash_init();
@@ -14,10 +18,18 @@ extern "C" void app_main(void) {
   ESP_ERROR_CHECK(ret);
 
   app_wifi();
-  app_websocket();
-}
-#else
-extern void app_websocket(void);
 
-extern "C" void app_main(void) { app_websocket(); }
-#endif
+  vTaskDelay(pdMS_TO_TICKS(5000));
+
+
+  // Esp32IDFWebSocketClient client;
+
+  // client.connect();
+
+  // app_websocket();
+}
+// #else
+// extern void app_websocket(void);
+
+// extern "C" void app_main(void) { app_websocket(); }
+// #endif

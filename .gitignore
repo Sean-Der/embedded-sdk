@@ -4,3 +4,5 @@ managed_components
 
 deps/livekit-protocol-generated/*.h
 deps/livekit-protocol-generated/*.c
+
+node_modules

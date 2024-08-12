@@ -1,19 +1,15 @@
-cmake_minimum_required(VERSION 3.18.4)
+cmake_minimum_required(VERSION 3.19)
 
-# if(NOT DEFINED ENV{WIFI_SSID} OR NOT DEFINED ENV{WIFI_PASSWORD} OR NOT DEFINED ENV{LIVEKIT_URL})
-# 	message(FATAL_ERROR "Env variables WIFI_SSID, WIFI_PASSWORD and LIVEKIT_URL must be set")
-# endif()
+if(NOT DEFINED ENV{WIFI_SSID} OR NOT DEFINED ENV{WIFI_PASSWORD} OR NOT DEFINED ENV{LIVEKIT_URL})
+	message(FATAL_ERROR "Env variables WIFI_SSID, WIFI_PASSWORD and LIVEKIT_URL must be set")
+endif()
 
-add_compile_definitions(WIFI_SSID="")
-add_compile_definitions(WIFI_PASSWORD="")
-# add_compile_definitions(WIFI_SSID="$ENV{WIFI_SSID}")
-# add_compile_definitions(WIFI_PASSWORD="$ENV{WIFI_PASSWORD}")
-# add_compile_definitions(LIVEKIT_URL="$ENV{LIVEKIT_URL}")
+add_compile_definitions(WIFI_SSID="$ENV{WIFI_SSID}")
+add_compile_definitions(WIFI_PASSWORD="$ENV{WIFI_PASSWORD}")
+add_compile_definitions(LIVEKIT_URL="$ENV{LIVEKIT_URL}")
 
 set(COMPONENTS src)
 set(EXTRA_COMPONENT_DIRS "src")
-
-list(APPEND EXTRA_COMPONENT_DIRS "components/ws")
 
 if(IDF_TARGET STREQUAL linux)
 	add_compile_definitions(LINUX_BUILD=1)

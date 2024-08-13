@@ -3,6 +3,7 @@
 #include "esp_websocket_client.h"
 
 static const char *LOG_TAG = "embedded-sdk";
+#define WEBSOCKET_URI_SIZE 1500
 
 static void app_websocket_event_handler(void *handler_args,
                                         esp_event_base_t base, int32_t event_id,
@@ -33,9 +34,14 @@ static void app_websocket_event_handler(void *handler_args,
 }
 
 void app_websocket(void) {
+  char ws_uri[WEBSOCKET_URI_SIZE];
+  snprintf(ws_uri, sizeof(ws_uri), "%s/rtc?access_token=%s", LIVEKIT_URL,
+           LIVEKIT_TOKEN);
+
   esp_websocket_client_config_t ws_cfg;
   memset(&ws_cfg, 0, sizeof(ws_cfg));
-  ws_cfg.uri = LIVEKIT_URL;
+
+  ws_cfg.uri = ws_uri;
 
   auto client = esp_websocket_client_init(&ws_cfg);
   esp_websocket_register_events(client, WEBSOCKET_EVENT_ANY,
@@ -43,15 +49,9 @@ void app_websocket(void) {
 
   esp_websocket_client_start(client);
 
-  char data[32];
-  int i = 0;
-  while (i < 500) {
-    if (esp_websocket_client_is_connected(client)) {
-      int len = sprintf(data, "hello %04d", i++);
-      ESP_LOGI(LOG_TAG, "Sending %s", data);
-      esp_websocket_client_send_text(client, data, len, portMAX_DELAY);
-    }
-    vTaskDelay(pdMS_TO_TICKS(1000));
+  // TODO. State machine
+  while (true) {
+    vTaskDelay(pdMS_TO_TICKS(5000));
   }
 }
 

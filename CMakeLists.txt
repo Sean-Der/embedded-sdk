@@ -10,11 +10,12 @@ if(NOT IDF_TARGET STREQUAL linux)
   add_compile_definitions(WIFI_PASSWORD="$ENV{WIFI_PASSWORD}")
 endif()
 
-if(NOT DEFINED ENV{LIVEKIT_URL})
-  message(FATAL_ERROR "Env variable LIVEKIT_URL must be set")
+if(NOT DEFINED ENV{LIVEKIT_URL} OR NOT DEFINED ENV{LIVEKIT_TOKEN})
+  message(FATAL_ERROR "Env variable LIVEKIT_URL and LIVEKIT_TOKEN must be set")
 endif()
 
 add_compile_definitions(LIVEKIT_URL="$ENV{LIVEKIT_URL}")
+add_compile_definitions(LIVEKIT_TOKEN="$ENV{LIVEKIT_TOKEN}")
 
 set(COMPONENTS src)
 set(EXTRA_COMPONENT_DIRS "src" "deps/esp-protocols/components/esp_websocket_client")

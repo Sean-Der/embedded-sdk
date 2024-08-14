@@ -16,5 +16,5 @@ else()
 		REQUIRES driver protobuf-c esp_wifi nvs_flash esp_websocket_client)
 endif()
 
-idf_component_get_property(lib esp_websocket_client COMPONENT_LIB)
+idf_component_get_property(lib espressif__esp_websocket_client COMPONENT_LIB)
 target_compile_options(${lib} PRIVATE -Wno-error=format)

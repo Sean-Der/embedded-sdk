@@ -1,15 +1,15 @@
 dependencies:
-  esp_websocket_client:
-    component_hash: null
+  espressif/esp_websocket_client:
+    component_hash: ae561d39222a399ddda5e470913c3d54a3c0f53dce15b8d21a3aaa4226dd74b1
     source:
-      path: /project/deps/esp-protocols/components/esp_websocket_client
-      type: local
+      service_url: https://api.components.espressif.com/
+      type: service
     version: 1.2.3
   idf:
     component_hash: null
     source:
       type: idf
     version: 5.4.0
-manifest_hash: 8836f77d1b57c48b0da82dcf849366f9c1d87ccd31879fb916f0a5228324581c
-target: esp32s3
+manifest_hash: a82e72b2e9645eb3ea9777595b81ba400c628bcd6cf72cfa63f06c66f2700758
+target: linux
 version: 1.0.0

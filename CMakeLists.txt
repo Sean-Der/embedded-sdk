@@ -18,7 +18,7 @@ add_compile_definitions(LIVEKIT_URL="$ENV{LIVEKIT_URL}")
 add_compile_definitions(LIVEKIT_TOKEN="$ENV{LIVEKIT_TOKEN}")
 
 set(COMPONENTS src)
-set(EXTRA_COMPONENT_DIRS "src" "deps/esp-protocols/components/esp_websocket_client")
+set(EXTRA_COMPONENT_DIRS "src")
 
 if(IDF_TARGET STREQUAL linux)
 	add_compile_definitions(LINUX_BUILD=1)

@@ -4,3 +4,6 @@
 [submodule "deps/esp-protocols"]
 	path = deps/esp-protocols
 	url = https://github.com/espressif/esp-protocols.git
+[submodule "components/srtp"]
+	path = components/srtp
+	url = https://github.com/sean-der/esp_ports

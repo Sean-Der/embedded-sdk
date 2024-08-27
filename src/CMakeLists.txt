@@ -8,12 +8,12 @@ if(IDF_TARGET STREQUAL linux)
 	idf_component_register(
 		SRCS ${COMMON_SRC}
 		INCLUDE_DIRS "." "../deps/livekit-protocol-generated"
-		REQUIRES protobuf-c esp_websocket_client)
+		REQUIRES protobuf-c esp_websocket_client srtp)
 else()
 	idf_component_register(
 		SRCS ${COMMON_SRC} "wifi.cpp"
 	  INCLUDE_DIRS "." "../deps/livekit-protocol-generated"
-		REQUIRES driver protobuf-c esp_wifi nvs_flash esp_websocket_client)
+		REQUIRES driver protobuf-c esp_wifi nvs_flash esp_websocket_client srtp)
 endif()
 
 idf_component_get_property(lib espressif__esp_websocket_client COMPONENT_LIB)

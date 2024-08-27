@@ -7,3 +7,6 @@
 [submodule "components/srtp"]
 	path = components/srtp
 	url = https://github.com/sean-der/esp_ports
+[submodule "deps/libpeer"]
+	path = deps/libpeer
+	url = https://github.com/sean-der/libpeer

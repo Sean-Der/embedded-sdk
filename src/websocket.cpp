@@ -1,3 +1,10 @@
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/param.h>
+#include <sys/time.h>
+
 #include <vector>
 
 #include "esp_event.h"
@@ -6,6 +13,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "livekit_rtc.pb-c.h"
+#include "peer.h"
 
 static const char *LOG_TAG = "embedded-sdk";
 #define WEBSOCKET_URI_SIZE 1500

@@ -16,7 +16,7 @@
 #include "peer.h"
 
 static const char *LOG_TAG = "embedded-sdk";
-#define WEBSOCKET_URI_SIZE 1500
+#define WEBSOCKET_URI_SIZE 400
 #define MTU_SIZE 1500
 
 std::vector<Livekit__SignalRequest *> app_websocket_packets;

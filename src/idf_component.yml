@@ -1,4 +1,3 @@
 dependencies:
-  espressif/esp_websocket_client: "^1.2.3"
   idf:
     version: ">=4.1.0"

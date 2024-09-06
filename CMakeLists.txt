@@ -18,14 +18,14 @@ add_compile_definitions(LIVEKIT_URL="$ENV{LIVEKIT_URL}")
 add_compile_definitions(LIVEKIT_TOKEN="$ENV{LIVEKIT_TOKEN}")
 
 set(COMPONENTS src)
-set(EXTRA_COMPONENT_DIRS "src" "components/srtp" "components/peer")
+set(EXTRA_COMPONENT_DIRS "src" "components/srtp" "components/peer" "components/esp-protocols/components/esp_websocket_client")
 
 if(IDF_TARGET STREQUAL linux)
 	add_compile_definitions(LINUX_BUILD=1)
   list(APPEND EXTRA_COMPONENT_DIRS
     $ENV{IDF_PATH}/examples/protocols/linux_stubs/esp_stubs
-    "deps/esp-protocols/common_components/linux_compat/esp_timer"
-    "deps/esp-protocols/common_components/linux_compat/freertos"
+    "components/esp-protocols/common_components/linux_compat/esp_timer"
+    "components/esp-protocols/common_components/linux_compat/freertos"
     )
 endif()
 

@@ -1,3 +1,4 @@
+#include <pthread.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -23,6 +24,18 @@ static const char *LOG_TAG = "embedded-sdk";
 
 std::vector<Livekit__SignalResponse *> app_websocket_packets;
 SemaphoreHandle_t app_websocket_mutex;
+
+static void *peer_connection_task(void *user_data) {
+  PeerConnection *peer_connection = (PeerConnection *)user_data;
+
+  while (1) {
+    peer_connection_loop(peer_connection);
+    vTaskDelay(pdMS_TO_TICKS(1));
+  }
+
+  pthread_exit(NULL);
+  return NULL;
+}
 
 static void app_websocket_event_handler(void *handler_args,
                                         esp_event_base_t base, int32_t event_id,
@@ -84,17 +97,18 @@ void app_websocket(void) {
 
   esp_websocket_client_start(client);
 
-  // Example sending data
-  // Livekit__AddTrackRequest r LIVEKIT__ADD_TRACK_RESPONSE__INIT;
-  // size_t size = livekit__add_track_request__get_packed_size(&r);
-  // uint8_t *buffer =(uint8_t*) malloc(size);
-  // livekit__add_track_request__pack(&r,buffer);
-  // esp_err_t err = esp_websocket_client_send_bin(client,(char*)buffer,size,
-  // portMAX_DELAY); if (err != ESP_OK) {
-  //   printf("Failed to send data: %s\n", esp_err_to_name(err));
-  // } else {
-  //   printf("Data sent successfully\n");
-  // }
+  PeerConfiguration peer_connection_config = {
+      .audio_codec = CODEC_OPUS,
+      .video_codec = CODEC_H264,
+  };
+
+  peer_init();
+
+  PeerConnection *subscriber_peer_connection =
+      peer_connection_create(&peer_connection_config);
+
+  pthread_t subscriber_peer_connection_thread_handle;
+  pthread_create(&subscriber_peer_connection_thread_handle, NULL, peer_connection_task, subscriber_peer_connection);
 
   while (true) {
     if (xSemaphoreTake(app_websocket_mutex, portMAX_DELAY) == pdTRUE) {
@@ -115,7 +129,8 @@ void app_websocket(void) {
             ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_OFFER\n");
             break;
           case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRICKLE:
-            ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRICKLE\n");
+            ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRICKLE %s \n",
+                     packet->trickle->candidateinit);
             break;
           case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_UPDATE:
             ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_UPDATE\n");

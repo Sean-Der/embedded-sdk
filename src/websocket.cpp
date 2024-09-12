@@ -82,6 +82,57 @@ static void app_websocket_event_handler(void *handler_args,
   }
 }
 
+void app_websocket_handle_livekit_response(
+    char *string_buffer, PeerConnection *subscriber_peer_connection) {
+  auto packet = app_websocket_packets.front();
+
+  switch (packet->message_case) {
+    case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRICKLE:
+      ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRICKLE\n");
+      peer_connection_add_ice_candidate(subscriber_peer_connection,
+                                        packet->trickle->candidateinit);
+      peer_connection_set_remote_description(subscriber_peer_connection,
+                                             string_buffer);
+      break;
+    case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_OFFER:
+      ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_OFFER\n");
+      strncpy(string_buffer, packet->offer->sdp, STRING_BUFFER_SIZE);
+      break;
+    /* Logging/NoOp below */
+    case LIVEKIT__SIGNAL_RESPONSE__MESSAGE__NOT_SET:
+      ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE__NOT_SET\n");
+      break;
+    case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_JOIN:
+      ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_JOIN\n");
+      break;
+    case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_ANSWER:
+      ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_ANSWER\n");
+      break;
+    case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_UPDATE:
+      ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_UPDATE\n");
+      break;
+    case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRACK_PUBLISHED:
+      ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRACK_PUBLISHED\n");
+      break;
+    case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_LEAVE:
+      ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_LEAVE\n");
+      break;
+    case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_MUTE:
+      ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_MUTE\n");
+      break;
+    case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_SPEAKERS_CHANGED:
+      ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_SPEAKERS_CHANGED\n");
+      break;
+    case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_ROOM_UPDATE:
+      ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_ROOM_UPDATE\n");
+      break;
+    default:
+      ESP_LOGI(LOG_TAG, "Unknown message type received.\n");
+  }
+  app_websocket_packets.erase(app_websocket_packets.begin());
+  livekit__signal_response__free_unpacked(packet, NULL);
+}
+
 void app_websocket(void) {
   g_mutex = xSemaphoreCreateMutex();
   if (g_mutex == NULL) {
@@ -109,9 +160,14 @@ void app_websocket(void) {
   esp_websocket_client_start(client);
 
   PeerConfiguration peer_connection_config = {
-      .ice_servers = {
-          {.urls = "stun:stun.l.google.com:19302"},
-      },
+      .ice_servers =
+          {
+              {
+                  .urls = "stun:stun.l.google.com:19302",
+                  .username = NULL,
+                  .credential = NULL,
+              },
+          },
       .audio_codec = CODEC_NONE,
       .video_codec = CODEC_NONE,
       .datachannel = DATA_CHANNEL_STRING,
@@ -139,55 +195,8 @@ void app_websocket(void) {
   while (true) {
     if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
       if (!app_websocket_packets.empty()) {
-        auto packet = app_websocket_packets.front();
-
-        switch (packet->message_case) {
-          case LIVEKIT__SIGNAL_RESPONSE__MESSAGE__NOT_SET:
-            ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE__NOT_SET\n");
-            break;
-          case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_JOIN:
-            ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_JOIN\n");
-            break;
-          case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_ANSWER:
-            ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_ANSWER\n");
-            break;
-          case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_OFFER:
-            ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_OFFER\n");
-            strncpy(string_buffer, packet->offer->sdp, STRING_BUFFER_SIZE);
-            break;
-          case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRICKLE:
-            ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRICKLE\n");
-            peer_connection_add_ice_candidate(subscriber_peer_connection,
-                                              packet->trickle->candidateinit);
-            peer_connection_set_remote_description(subscriber_peer_connection,
-                                                   string_buffer);
-            break;
-          case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_UPDATE:
-            ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_UPDATE\n");
-            break;
-          case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRACK_PUBLISHED:
-            ESP_LOGI(LOG_TAG,
-                     "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRACK_PUBLISHED\n");
-            break;
-          case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_LEAVE:
-            ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_LEAVE\n");
-            break;
-          case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_MUTE:
-            ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_MUTE\n");
-            break;
-          case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_SPEAKERS_CHANGED:
-            ESP_LOGI(LOG_TAG,
-                     "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_SPEAKERS_CHANGED\n");
-            break;
-          case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_ROOM_UPDATE:
-            ESP_LOGI(LOG_TAG,
-                     "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_ROOM_UPDATE\n");
-            break;
-          default:
-            ESP_LOGI(LOG_TAG, "Unknown message type received.\n");
-        }
-        app_websocket_packets.erase(app_websocket_packets.begin());
-        livekit__signal_response__free_unpacked(packet, NULL);
+        app_websocket_handle_livekit_response(string_buffer,
+                                              subscriber_peer_connection);
       }
       xSemaphoreGive(g_mutex);
     }

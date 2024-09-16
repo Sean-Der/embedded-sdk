@@ -1,3 +1,11 @@
+#include <cJSON.h>
+#include <esp_event.h>
+#include <esp_log.h>
+#include <esp_websocket_client.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+#include <livekit_rtc.pb-c.h>
+#include <peer.h>
 #include <pthread.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -8,14 +16,6 @@
 
 #include <vector>
 
-#include "esp_event.h"
-#include "esp_log.h"
-#include "esp_websocket_client.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
-#include "livekit_rtc.pb-c.h"
-#include "peer.h"
-
 static const char *LOG_TAG = "embedded-sdk";
 
 #define STRING_BUFFER_SIZE 750
@@ -24,6 +24,8 @@ static const char *LOG_TAG = "embedded-sdk";
 
 std::vector<Livekit__SignalResponse *> app_websocket_packets;
 SemaphoreHandle_t g_mutex;
+char *g_string_buffer = NULL;
+bool g_string_buffer_is_response = false;
 
 static void *peer_connection_task(void *user_data) {
   PeerConnection *peer_connection = (PeerConnection *)user_data;
@@ -38,7 +40,13 @@ static void *peer_connection_task(void *user_data) {
 }
 
 static void on_icecandidate_task(char *description, void *user_data) {
-  printf("%s \n", description);
+  if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
+    g_string_buffer_is_response = true;
+    memset(g_string_buffer, 0, STRING_BUFFER_SIZE);
+    strncpy(g_string_buffer, description, STRING_BUFFER_SIZE);
+
+    xSemaphoreGive(g_mutex);
+  }
 }
 
 static void onconnectionstatechange_task(PeerConnectionState state,
@@ -83,20 +91,36 @@ static void app_websocket_event_handler(void *handler_args,
 }
 
 void app_websocket_handle_livekit_response(
-    char *string_buffer, PeerConnection *subscriber_peer_connection) {
+    PeerConnection *subscriber_peer_connection) {
   auto packet = app_websocket_packets.front();
 
   switch (packet->message_case) {
-    case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRICKLE:
+    case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRICKLE: {
       ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRICKLE\n");
+
+      auto parsed = cJSON_Parse(packet->trickle->candidateinit);
+      if (!parsed) {
+        ESP_LOGI(LOG_TAG, "failed to parse ice_candidate_init");
+        return;
+      }
+
+      auto candidate_obj = cJSON_GetObjectItem(parsed, "candidate");
+      if (!candidate_obj || !cJSON_IsString(candidate_obj)) {
+        ESP_LOGI(LOG_TAG,
+                 "failed to parse ice_candidate_init has no candidate\n");
+        return;
+      }
+
       peer_connection_add_ice_candidate(subscriber_peer_connection,
-                                        packet->trickle->candidateinit);
+                                        candidate_obj->valuestring);
       peer_connection_set_remote_description(subscriber_peer_connection,
-                                             string_buffer);
+                                             g_string_buffer);
+      cJSON_Delete(parsed);
       break;
+    }
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_OFFER:
       ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_OFFER\n");
-      strncpy(string_buffer, packet->offer->sdp, STRING_BUFFER_SIZE);
+      strncpy(g_string_buffer, packet->offer->sdp, STRING_BUFFER_SIZE);
       break;
     /* Logging/NoOp below */
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE__NOT_SET:
@@ -140,15 +164,15 @@ void app_websocket(void) {
     return;
   }
 
-  char *string_buffer = (char *)calloc(1, STRING_BUFFER_SIZE);
-  snprintf(string_buffer, STRING_BUFFER_SIZE,
+  g_string_buffer = (char *)calloc(1, STRING_BUFFER_SIZE);
+  snprintf(g_string_buffer, STRING_BUFFER_SIZE,
            "%s/rtc?protocol=%d&access_token=%s&auto_subscribe=true",
            LIVEKIT_URL, LIVEKIT_PROTOCOL_VERSION, LIVEKIT_TOKEN);
 
   esp_websocket_client_config_t ws_cfg;
   memset(&ws_cfg, 0, sizeof(ws_cfg));
 
-  ws_cfg.uri = string_buffer;
+  ws_cfg.uri = g_string_buffer;
   ws_cfg.buffer_size = MTU_SIZE;
   ws_cfg.disable_pingpong_discon = true;
   ws_cfg.reconnect_timeout_ms = 1000;
@@ -190,13 +214,12 @@ void app_websocket(void) {
   pthread_t subscriber_peer_connection_thread_handle;
   pthread_create(&subscriber_peer_connection_thread_handle, NULL,
                  peer_connection_task, subscriber_peer_connection);
-  memset(string_buffer, 0, STRING_BUFFER_SIZE);
+  memset(g_string_buffer, 0, STRING_BUFFER_SIZE);
 
   while (true) {
     if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
       if (!app_websocket_packets.empty()) {
-        app_websocket_handle_livekit_response(string_buffer,
-                                              subscriber_peer_connection);
+        app_websocket_handle_livekit_response(subscriber_peer_connection);
       }
       xSemaphoreGive(g_mutex);
     }

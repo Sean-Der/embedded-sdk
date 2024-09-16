@@ -1,11 +1,10 @@
 #include <assert.h>
+#include <esp_event.h>
+#include <esp_log.h>
+#include <esp_wifi.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include "esp_event.h"
-#include "esp_log.h"
-#include "esp_wifi.h"
 
 static const char *LOG_TAG = "embedded-sdk";
 

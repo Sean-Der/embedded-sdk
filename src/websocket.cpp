@@ -17,6 +17,7 @@
 #include <vector>
 
 static const char *LOG_TAG = "embedded-sdk";
+static const char *SDP_TYPE_ANSWER = "answer";
 
 #define STRING_BUFFER_SIZE 750
 #define MTU_SIZE 1500
@@ -29,7 +30,6 @@ bool g_string_buffer_is_response = false;
 
 static void *peer_connection_task(void *user_data) {
   PeerConnection *peer_connection = (PeerConnection *)user_data;
-
   while (1) {
     peer_connection_loop(peer_connection);
     vTaskDelay(pdMS_TO_TICKS(20));
@@ -218,6 +218,28 @@ void app_websocket(void) {
 
   while (true) {
     if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
+      if (g_string_buffer_is_response == true) {
+        g_string_buffer_is_response = false;
+
+        Livekit__SignalRequest r = LIVEKIT__SIGNAL_REQUEST__INIT;
+        Livekit__SessionDescription s = LIVEKIT__SESSION_DESCRIPTION__INIT;
+
+        s.sdp = g_string_buffer;
+        s.type = (char *)SDP_TYPE_ANSWER;
+        r.answer = &s;
+        r.message_case = LIVEKIT__SIGNAL_REQUEST__MESSAGE_ANSWER;
+
+        auto size = livekit__signal_request__get_packed_size(&r);
+        auto *buffer = (uint8_t *)malloc(size);
+        livekit__signal_request__pack(&r, buffer);
+        esp_err_t err = esp_websocket_client_send_bin(client, (char *)buffer,
+                                                      size, portMAX_DELAY);
+        if (err != ESP_OK) {
+          ESP_LOGI(LOG_TAG, "Failed to send answer: %s\n",
+                   esp_err_to_name(err));
+        }
+      }
+
       if (!app_websocket_packets.empty()) {
         app_websocket_handle_livekit_response(subscriber_peer_connection);
       }

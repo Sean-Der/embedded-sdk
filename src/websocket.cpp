@@ -180,14 +180,7 @@ void app_websocket(void) {
   esp_websocket_client_start(client);
 
   PeerConfiguration peer_connection_config = {
-      .ice_servers =
-          {
-              {
-                  .urls = "stun:stun.l.google.com:19302",
-                  .username = NULL,
-                  .credential = NULL,
-              },
-          },
+      .ice_servers = { },
       .audio_codec = CODEC_NONE,
       .video_codec = CODEC_NONE,
       .datachannel = DATA_CHANNEL_STRING,

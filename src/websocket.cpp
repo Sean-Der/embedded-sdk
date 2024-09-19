@@ -25,8 +25,7 @@ static const char *SDP_TYPE_ANSWER = "answer";
 
 std::vector<Livekit__SignalResponse *> app_websocket_packets;
 SemaphoreHandle_t g_mutex;
-char *g_string_buffer = NULL;
-bool g_string_buffer_is_response = false;
+char *offer_buffer = NULL, *answer_buffer;
 
 static void *peer_connection_task(void *user_data) {
   PeerConnection *peer_connection = (PeerConnection *)user_data;
@@ -41,10 +40,7 @@ static void *peer_connection_task(void *user_data) {
 
 static void on_icecandidate_task(char *description, void *user_data) {
   if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
-    g_string_buffer_is_response = true;
-    memset(g_string_buffer, 0, STRING_BUFFER_SIZE);
-    strncpy(g_string_buffer, description, STRING_BUFFER_SIZE);
-
+    answer_buffer = strdup(description);
     xSemaphoreGive(g_mutex);
   }
 }
@@ -114,13 +110,13 @@ void app_websocket_handle_livekit_response(
       peer_connection_add_ice_candidate(subscriber_peer_connection,
                                         candidate_obj->valuestring);
       peer_connection_set_remote_description(subscriber_peer_connection,
-                                             g_string_buffer);
+                                             offer_buffer);
       cJSON_Delete(parsed);
       break;
     }
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_OFFER:
       ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_OFFER\n");
-      strncpy(g_string_buffer, packet->offer->sdp, STRING_BUFFER_SIZE);
+      strncpy(offer_buffer, packet->offer->sdp, STRING_BUFFER_SIZE);
       break;
     /* Logging/NoOp below */
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE__NOT_SET:
@@ -164,15 +160,15 @@ void app_websocket(void) {
     return;
   }
 
-  g_string_buffer = (char *)calloc(1, STRING_BUFFER_SIZE);
-  snprintf(g_string_buffer, STRING_BUFFER_SIZE,
+  offer_buffer = (char *)calloc(1, STRING_BUFFER_SIZE);
+  snprintf(offer_buffer, STRING_BUFFER_SIZE,
            "%s/rtc?protocol=%d&access_token=%s&auto_subscribe=true",
            LIVEKIT_URL, LIVEKIT_PROTOCOL_VERSION, LIVEKIT_TOKEN);
 
   esp_websocket_client_config_t ws_cfg;
   memset(&ws_cfg, 0, sizeof(ws_cfg));
 
-  ws_cfg.uri = g_string_buffer;
+  ws_cfg.uri = offer_buffer;
   ws_cfg.buffer_size = MTU_SIZE;
   ws_cfg.disable_pingpong_discon = true;
   ws_cfg.reconnect_timeout_ms = 1000;
@@ -214,17 +210,15 @@ void app_websocket(void) {
   pthread_t subscriber_peer_connection_thread_handle;
   pthread_create(&subscriber_peer_connection_thread_handle, NULL,
                  peer_connection_task, subscriber_peer_connection);
-  memset(g_string_buffer, 0, STRING_BUFFER_SIZE);
 
   while (true) {
     if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
-      if (g_string_buffer_is_response == true) {
-        g_string_buffer_is_response = false;
+      if (answer_buffer != NULL) {
 
         Livekit__SignalRequest r = LIVEKIT__SIGNAL_REQUEST__INIT;
         Livekit__SessionDescription s = LIVEKIT__SESSION_DESCRIPTION__INIT;
 
-        s.sdp = g_string_buffer;
+        s.sdp = answer_buffer;
         s.type = (char *)SDP_TYPE_ANSWER;
         r.answer = &s;
         r.message_case = LIVEKIT__SIGNAL_REQUEST__MESSAGE_ANSWER;
@@ -238,6 +232,9 @@ void app_websocket(void) {
           ESP_LOGI(LOG_TAG, "Failed to send answer: %s\n",
                    esp_err_to_name(err));
         }
+
+        free(answer_buffer);
+        answer_buffer = NULL;
       }
 
       if (!app_websocket_packets.empty()) {

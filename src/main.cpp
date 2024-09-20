@@ -1,7 +1,7 @@
-#include <esp_event.h>
+#include "main.h"
 
-extern void app_wifi(void);
-extern void app_websocket(void);
+#include <esp_event.h>
+#include <peer.h>
 
 #ifndef LINUX_BUILD
 #include "nvs_flash.h"
@@ -16,12 +16,14 @@ extern "C" void app_main(void) {
   ESP_ERROR_CHECK(ret);
 
   ESP_ERROR_CHECK(esp_event_loop_create_default());
+  peer_init();
   app_wifi();
   app_websocket();
 }
 #else
 int main(void) {
   ESP_ERROR_CHECK(esp_event_loop_create_default());
+  peer_init();
   app_websocket();
 }
 #endif

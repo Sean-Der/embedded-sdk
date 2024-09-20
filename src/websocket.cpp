@@ -27,11 +27,37 @@ char *offer_buffer = NULL;
 char *answer_buffer = NULL;
 char *ice_candidate_buffer = NULL;
 
+// on_icecandidate_task holds lock because peer_connection_task is
+// what causes it to be fired
 static void on_icecandidate_task(char *description, void *user_data) {
-  if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
-    answer_buffer = strdup(description);
-    xSemaphoreGive(g_mutex);
+  answer_buffer = strdup(description);
+}
+
+void *peer_connection_task(void *user_data) {
+  PeerConnection *peer_connection = (PeerConnection *)user_data;
+  while (1) {
+    if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
+      if (offer_buffer != NULL && ice_candidate_buffer != NULL) {
+        peer_connection_add_ice_candidate(peer_connection,
+                                          ice_candidate_buffer);
+        peer_connection_set_remote_description(peer_connection, offer_buffer);
+
+        free(offer_buffer);
+        offer_buffer = NULL;
+
+        free(ice_candidate_buffer);
+        ice_candidate_buffer = NULL;
+      }
+
+      xSemaphoreGive(g_mutex);
+    }
+
+    peer_connection_loop(peer_connection);
+    vTaskDelay(pdMS_TO_TICKS(200));
   }
+
+  pthread_exit(NULL);
+  return NULL;
 }
 
 void app_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
@@ -52,13 +78,22 @@ void app_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
         return;
       }
 
-      ice_candidate_buffer = strdup(candidate_obj->valuestring);
+      if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
+        ice_candidate_buffer = strdup(candidate_obj->valuestring);
+        xSemaphoreGive(g_mutex);
+      }
+
       cJSON_Delete(parsed);
       break;
     }
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_OFFER:
       ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_OFFER\n");
-      offer_buffer = strdup(packet->offer->sdp);
+
+      if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
+        offer_buffer = strdup(packet->offer->sdp);
+        xSemaphoreGive(g_mutex);
+      }
+
       break;
     /* Logging/NoOp below */
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE__NOT_SET:
@@ -104,25 +139,24 @@ static void app_websocket_event_handler(void *handler_args,
     case WEBSOCKET_EVENT_DISCONNECTED:
       ESP_LOGI(LOG_TAG, "WEBSOCKET_EVENT_DISCONNECTED");
       break;
-    case WEBSOCKET_EVENT_DATA:
+    case WEBSOCKET_EVENT_DATA: {
       if (data->op_code == 0x08 && data->data_len == 2) {
         return;
       }
 
-      if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
-        auto new_response = livekit__signal_response__unpack(
-            NULL, data->data_len, (uint8_t *)data->data_ptr);
+      auto new_response = livekit__signal_response__unpack(
+          NULL, data->data_len, (uint8_t *)data->data_ptr);
 
-        if (new_response == NULL) {
-          ESP_LOGE(LOG_TAG, "Failed to decode SignalResponse message.\n");
-        } else {
-          app_websocket_handle_livekit_response(new_response);
-        }
-
-        livekit__signal_response__free_unpacked(new_response, NULL);
-        xSemaphoreGive(g_mutex);
+      if (new_response == NULL) {
+        ESP_LOGE(LOG_TAG, "Failed to decode SignalResponse message.\n");
+      } else {
+        app_websocket_handle_livekit_response(new_response);
       }
+
+      livekit__signal_response__free_unpacked(new_response, NULL);
+
       break;
+    }
     case WEBSOCKET_EVENT_ERROR:
       ESP_LOGI(LOG_TAG, "WEBSOCKET_EVENT_ERROR");
       break;
@@ -186,19 +220,6 @@ void app_websocket(void) {
 
         free(answer_buffer);
         answer_buffer = NULL;
-      }
-
-      if (offer_buffer != NULL && ice_candidate_buffer != NULL) {
-        peer_connection_add_ice_candidate(subscriber_peer_connection,
-                                          ice_candidate_buffer);
-        peer_connection_set_remote_description(subscriber_peer_connection,
-                                               offer_buffer);
-
-        free(offer_buffer);
-        offer_buffer = NULL;
-
-        free(ice_candidate_buffer);
-        ice_candidate_buffer = NULL;
       }
 
       xSemaphoreGive(g_mutex);

@@ -4,17 +4,6 @@
 
 #include "main.h"
 
-void *peer_connection_task(void *user_data) {
-  PeerConnection *peer_connection = (PeerConnection *)user_data;
-  while (1) {
-    peer_connection_loop(peer_connection);
-    vTaskDelay(pdMS_TO_TICKS(20));
-  }
-
-  pthread_exit(NULL);
-  return NULL;
-}
-
 static void onconnectionstatechange_task(PeerConnectionState state,
                                          void *user_data) {
   ESP_LOGI(LOG_TAG, "PeerConnectionState: %s",

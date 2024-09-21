@@ -17,6 +17,7 @@
 #include "main.h"
 
 #define WEBSOCKET_URI_SIZE 400
+#define ANSWER_BUFFER_SIZE 1000
 #define MTU_SIZE 1500
 #define LIVEKIT_PROTOCOL_VERSION 3
 
@@ -27,33 +28,57 @@ char *offer_buffer = NULL;
 char *answer_buffer = NULL;
 char *ice_candidate_buffer = NULL;
 
+// answer_status is a FSM of the following states
+// * 0 - NoOp, don't send an answer
+// * 1 - Send an answer with audio removed
+// * 2 - Send an answer with audio enabled
+int answer_status = 0;
+char *answer_ice_ufrag = NULL;
+char *answer_ice_pwd = NULL;
+char *answer_fingerprint = NULL;
+
 // on_icecandidate_task holds lock because peer_connection_task is
 // what causes it to be fired
 static void on_icecandidate_task(char *description, void *user_data) {
-  answer_buffer = strdup(description);
+  auto fingerprint = strstr(description, "a=fingerprint");
+  answer_fingerprint =
+      strndup(fingerprint, (int)(strchr(fingerprint, '\r') - fingerprint));
+
+  auto iceUfrag = strstr(description, "a=ice-ufrag");
+  answer_ice_ufrag =
+      strndup(iceUfrag, (int)(strchr(iceUfrag, '\r') - iceUfrag));
+
+  auto icePwd = strstr(description, "a=ice-pwd");
+  answer_ice_pwd = strndup(icePwd, (int)(strchr(icePwd, '\r') - icePwd));
 }
 
 void *peer_connection_task(void *user_data) {
   PeerConnection *peer_connection = (PeerConnection *)user_data;
   while (1) {
     if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
-      if (offer_buffer != NULL && ice_candidate_buffer != NULL) {
-        peer_connection_add_ice_candidate(peer_connection,
-                                          ice_candidate_buffer);
-        peer_connection_set_remote_description(peer_connection, offer_buffer);
+      if (offer_buffer != NULL) {
+        auto s = peer_connection_get_state(peer_connection);
+        if (s == PEER_CONNECTION_COMPLETED || ice_candidate_buffer != NULL) {
+          if (ice_candidate_buffer != NULL) {
+            peer_connection_add_ice_candidate(peer_connection,
+                                              ice_candidate_buffer);
+          }
 
-        free(offer_buffer);
-        offer_buffer = NULL;
+          peer_connection_set_remote_description(peer_connection, offer_buffer);
 
-        free(ice_candidate_buffer);
-        ice_candidate_buffer = NULL;
+          free(offer_buffer);
+          offer_buffer = NULL;
+
+          free(ice_candidate_buffer);
+          ice_candidate_buffer = NULL;
+        }
       }
 
       xSemaphoreGive(g_mutex);
     }
 
     peer_connection_loop(peer_connection);
-    vTaskDelay(pdMS_TO_TICKS(200));
+    vTaskDelay(pdMS_TO_TICKS(20));
   }
 
   pthread_exit(NULL);
@@ -90,6 +115,12 @@ void app_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
       ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_OFFER\n");
 
       if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
+        if (strstr(packet->offer->sdp, "m=audio")) {
+          answer_status = 2;
+        } else {
+          answer_status = 1;
+        }
+
         offer_buffer = strdup(packet->offer->sdp);
         xSemaphoreGive(g_mutex);
       }
@@ -170,6 +201,8 @@ void app_websocket(void) {
     return;
   }
 
+  answer_buffer = (char *)calloc(1, ANSWER_BUFFER_SIZE);
+
   char ws_uri[WEBSOCKET_URI_SIZE];
   snprintf(ws_uri, WEBSOCKET_URI_SIZE,
            "%s/rtc?protocol=%d&access_token=%s&auto_subscribe=true",
@@ -200,10 +233,12 @@ void app_websocket(void) {
 
   while (true) {
     if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
-      if (answer_buffer != NULL) {
+      if (answer_status != 0 && answer_ice_ufrag != NULL) {
         Livekit__SignalRequest r = LIVEKIT__SIGNAL_REQUEST__INIT;
         Livekit__SessionDescription s = LIVEKIT__SESSION_DESCRIPTION__INIT;
 
+        populate_answer(answer_buffer, answer_ice_ufrag, answer_ice_pwd,
+                        answer_fingerprint, answer_status == 2);
         s.sdp = answer_buffer;
         s.type = (char *)SDP_TYPE_ANSWER;
         r.answer = &s;
@@ -218,8 +253,7 @@ void app_websocket(void) {
           ESP_LOGI(LOG_TAG, "Failed to send answer");
         }
 
-        free(answer_buffer);
-        answer_buffer = NULL;
+        answer_status = 0;
       }
 
       xSemaphoreGive(g_mutex);

@@ -78,7 +78,7 @@ void *peer_connection_task(void *user_data) {
     }
 
     peer_connection_loop(peer_connection);
-    vTaskDelay(pdMS_TO_TICKS(20));
+    vTaskDelay(pdMS_TO_TICKS(1));
   }
 
   pthread_exit(NULL);

@@ -186,7 +186,9 @@ static void app_websocket_event_handler(void *handler_args,
 
       if (new_response == NULL) {
         ESP_LOGE(LOG_TAG, "Failed to decode SignalResponse message.\n");
+#ifndef LINUX_BUILD
         esp_restart();
+#endif
       } else {
         app_websocket_handle_livekit_response(new_response);
       }

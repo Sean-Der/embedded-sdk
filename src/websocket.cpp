@@ -90,6 +90,12 @@ void app_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRICKLE: {
       ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRICKLE\n");
 
+      // Skip TCP ICE Candidates
+      if (strstr(packet->trickle->candidateinit, "tcp") != NULL) {
+        ESP_LOGD(LOG_TAG, "skipping tcp ice candidate");
+        return;
+      }
+
       auto parsed = cJSON_Parse(packet->trickle->candidateinit);
       if (!parsed) {
         ESP_LOGI(LOG_TAG, "failed to parse ice_candidate_init");

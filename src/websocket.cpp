@@ -40,6 +40,7 @@ extern char *ice_candidate_buffer;
 extern char *answer_ice_ufrag;
 
 extern PeerConnection *subscriber_peer_connection;
+extern PeerConnection *publisher_peer_connection;
 
 void app_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
   switch (packet->message_case) {
@@ -159,6 +160,18 @@ static void app_websocket_event_handler(void *handler_args,
   }
 }
 
+void pack_and_send_signal_request(const Livekit__SignalRequest *r,
+                                  esp_websocket_client *client) {
+  auto size = livekit__signal_request__get_packed_size(r);
+  auto *buffer = (uint8_t *)malloc(size);
+  livekit__signal_request__pack(r, buffer);
+  auto len = esp_websocket_client_send_bin(client, (char *)buffer, size,
+                                           portMAX_DELAY);
+  if (len == -1) {
+    ESP_LOGI(LOG_TAG, "Failed to send answer");
+  }
+}
+
 void app_websocket(void) {
   g_mutex = xSemaphoreCreateMutex();
   if (g_mutex == NULL) {
@@ -189,12 +202,27 @@ void app_websocket(void) {
 
   pthread_t peer_connection_thread_handle;
   subscriber_peer_connection = app_create_peer_connection(/* isPublisher */ 0);
+  publisher_peer_connection = app_create_peer_connection(/* isPublisher */ 1);
 
   pthread_create(&peer_connection_thread_handle, NULL, peer_connection_task,
                  NULL);
 
   while (true) {
     if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
+      if (answer_status == 1) {
+        Livekit__SignalRequest r = LIVEKIT__SIGNAL_REQUEST__INIT;
+        Livekit__AddTrackRequest a = LIVEKIT__ADD_TRACK_REQUEST__INIT;
+
+        a.cid = "microphone";
+        a.name = "microphone";
+        a.source = LIVEKIT__TRACK_SOURCE__MICROPHONE;
+
+        r.add_track = &a;
+        r.message_case = LIVEKIT__SIGNAL_REQUEST__MESSAGE_ADD_TRACK;
+
+        pack_and_send_signal_request(&r, client);
+      }
+
       if (answer_status != 0 && answer_ice_ufrag != NULL) {
         Livekit__SignalRequest r = LIVEKIT__SIGNAL_REQUEST__INIT;
         Livekit__SessionDescription s = LIVEKIT__SESSION_DESCRIPTION__INIT;
@@ -205,15 +233,7 @@ void app_websocket(void) {
         r.answer = &s;
         r.message_case = LIVEKIT__SIGNAL_REQUEST__MESSAGE_ANSWER;
 
-        auto size = livekit__signal_request__get_packed_size(&r);
-        auto *buffer = (uint8_t *)malloc(size);
-        livekit__signal_request__pack(&r, buffer);
-        auto len = esp_websocket_client_send_bin(client, (char *)buffer, size,
-                                                 portMAX_DELAY);
-        if (len == -1) {
-          ESP_LOGI(LOG_TAG, "Failed to send answer");
-        }
-
+        pack_and_send_signal_request(&r, client);
         answer_status = 0;
       }
 

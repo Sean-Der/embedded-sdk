@@ -14,6 +14,7 @@ char *answer_ice_pwd = NULL;
 char *answer_fingerprint = NULL;
 
 PeerConnection *subscriber_peer_connection = NULL;
+PeerConnection *publisher_peer_connection = NULL;
 
 static void onconnectionstatechange_task(PeerConnectionState state,
                                          void *user_data) {
@@ -63,6 +64,8 @@ void *peer_connection_task(void *user_data) {
         }
 
         peer_connection_loop(subscriber_peer_connection);
+        peer_connection_loop(publisher_peer_connection);
+
         vTaskDelay(pdMS_TO_TICKS(1));
     }
 

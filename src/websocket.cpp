@@ -23,67 +23,23 @@
 
 static const char *SDP_TYPE_ANSWER = "answer";
 
+// Mutex used for all global state
 SemaphoreHandle_t g_mutex;
-char *offer_buffer = NULL;
-char *answer_buffer = NULL;
-char *ice_candidate_buffer = NULL;
 
 // answer_status is a FSM of the following states
 // * 0 - NoOp, don't send an answer
 // * 1 - Send an answer with audio removed
 // * 2 - Send an answer with audio enabled
 int answer_status = 0;
-char *answer_ice_ufrag = NULL;
-char *answer_ice_pwd = NULL;
-char *answer_fingerprint = NULL;
 
-// on_icecandidate_task holds lock because peer_connection_task is
-// what causes it to be fired
-static void on_icecandidate_task(char *description, void *user_data) {
-  auto fingerprint = strstr(description, "a=fingerprint");
-  answer_fingerprint =
-      strndup(fingerprint, (int)(strchr(fingerprint, '\r') - fingerprint));
+// Offer + ICE Candidates. Captured in signaling thread
+// and set PeerConnection thread
+extern char *offer_buffer;
+extern char *ice_candidate_buffer;
 
-  auto iceUfrag = strstr(description, "a=ice-ufrag");
-  answer_ice_ufrag =
-      strndup(iceUfrag, (int)(strchr(iceUfrag, '\r') - iceUfrag));
+extern char *answer_ice_ufrag;
 
-  auto icePwd = strstr(description, "a=ice-pwd");
-  answer_ice_pwd = strndup(icePwd, (int)(strchr(icePwd, '\r') - icePwd));
-}
-
-void *peer_connection_task(void *user_data) {
-  PeerConnection *peer_connection = (PeerConnection *)user_data;
-  while (1) {
-    if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
-      if (offer_buffer != NULL) {
-        auto s = peer_connection_get_state(peer_connection);
-        if (s == PEER_CONNECTION_COMPLETED || ice_candidate_buffer != NULL) {
-          if (ice_candidate_buffer != NULL) {
-            peer_connection_add_ice_candidate(peer_connection,
-                                              ice_candidate_buffer);
-          }
-
-          peer_connection_set_remote_description(peer_connection, offer_buffer);
-
-          free(offer_buffer);
-          offer_buffer = NULL;
-
-          free(ice_candidate_buffer);
-          ice_candidate_buffer = NULL;
-        }
-      }
-
-      xSemaphoreGive(g_mutex);
-    }
-
-    peer_connection_loop(peer_connection);
-    vTaskDelay(pdMS_TO_TICKS(1));
-  }
-
-  pthread_exit(NULL);
-  return NULL;
-}
+extern PeerConnection *subscriber_peer_connection;
 
 void app_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
   switch (packet->message_case) {
@@ -210,7 +166,7 @@ void app_websocket(void) {
     return;
   }
 
-  answer_buffer = (char *)calloc(1, ANSWER_BUFFER_SIZE);
+  char *answer_buffer = (char *)calloc(1, ANSWER_BUFFER_SIZE);
 
   char ws_uri[WEBSOCKET_URI_SIZE];
   snprintf(ws_uri, WEBSOCKET_URI_SIZE,
@@ -231,14 +187,11 @@ void app_websocket(void) {
                                 app_websocket_event_handler, (void *)client);
   esp_websocket_client_start(client);
 
-  auto subscriber_peer_connection = app_create_peer_connection();
+  pthread_t peer_connection_thread_handle;
+  subscriber_peer_connection = app_create_peer_connection(/* isPublisher */ 0);
 
-  peer_connection_onicecandidate(subscriber_peer_connection,
-                                 on_icecandidate_task);
-
-  pthread_t subscriber_peer_connection_thread_handle;
-  pthread_create(&subscriber_peer_connection_thread_handle, NULL,
-                 peer_connection_task, subscriber_peer_connection);
+  pthread_create(&peer_connection_thread_handle, NULL, peer_connection_task,
+                 NULL);
 
   while (true) {
     if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
@@ -246,8 +199,7 @@ void app_websocket(void) {
         Livekit__SignalRequest r = LIVEKIT__SIGNAL_REQUEST__INIT;
         Livekit__SessionDescription s = LIVEKIT__SESSION_DESCRIPTION__INIT;
 
-        populate_answer(answer_buffer, answer_ice_ufrag, answer_ice_pwd,
-                        answer_fingerprint, answer_status == 2);
+        populate_answer(answer_buffer, answer_status == 2);
         s.sdp = answer_buffer;
         s.type = (char *)SDP_TYPE_ANSWER;
         r.answer = &s;

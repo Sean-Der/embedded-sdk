@@ -5,13 +5,72 @@
 
 #include "main.h"
 
+extern SemaphoreHandle_t g_mutex;
+
+char *offer_buffer = NULL;
+char *ice_candidate_buffer = NULL;
+char *answer_ice_ufrag = NULL;
+char *answer_ice_pwd = NULL;
+char *answer_fingerprint = NULL;
+
+PeerConnection *subscriber_peer_connection = NULL;
+
 static void onconnectionstatechange_task(PeerConnectionState state,
                                          void *user_data) {
     ESP_LOGI(LOG_TAG, "PeerConnectionState: %s",
              peer_connection_state_to_string(state));
 }
 
-PeerConnection *app_create_peer_connection() {
+// on_icecandidate_task holds lock because peer_connection_task is
+// what causes it to be fired
+static void on_icecandidate_task(char *description, void *user_data) {
+    auto fingerprint = strstr(description, "a=fingerprint");
+    answer_fingerprint =
+        strndup(fingerprint, (int)(strchr(fingerprint, '\r') - fingerprint));
+
+    auto iceUfrag = strstr(description, "a=ice-ufrag");
+    answer_ice_ufrag =
+        strndup(iceUfrag, (int)(strchr(iceUfrag, '\r') - iceUfrag));
+
+    auto icePwd = strstr(description, "a=ice-pwd");
+    answer_ice_pwd = strndup(icePwd, (int)(strchr(icePwd, '\r') - icePwd));
+}
+
+void *peer_connection_task(void *user_data) {
+    while (1) {
+        if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
+            if (offer_buffer != NULL) {
+                auto s = peer_connection_get_state(subscriber_peer_connection);
+                if (s == PEER_CONNECTION_COMPLETED ||
+                    ice_candidate_buffer != NULL) {
+                    if (ice_candidate_buffer != NULL) {
+                        peer_connection_add_ice_candidate(
+                            subscriber_peer_connection, ice_candidate_buffer);
+                    }
+
+                    peer_connection_set_remote_description(
+                        subscriber_peer_connection, offer_buffer);
+
+                    free(offer_buffer);
+                    offer_buffer = NULL;
+
+                    free(ice_candidate_buffer);
+                    ice_candidate_buffer = NULL;
+                }
+            }
+
+            xSemaphoreGive(g_mutex);
+        }
+
+        peer_connection_loop(subscriber_peer_connection);
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
+
+    pthread_exit(NULL);
+    return NULL;
+}
+
+PeerConnection *app_create_peer_connection(int isPublisher) {
     PeerConfiguration peer_connection_config = {
         .ice_servers = {},
         .audio_codec = CODEC_OPUS,
@@ -29,6 +88,9 @@ PeerConnection *app_create_peer_connection() {
 
     peer_connection_oniceconnectionstatechange(peer_connection,
                                                onconnectionstatechange_task);
+    if (!isPublisher) {
+        peer_connection_onicecandidate(peer_connection, on_icecandidate_task);
+    }
 
     return peer_connection;
 }
@@ -75,12 +137,13 @@ static const char *sdp_audio =
     "%s\r\n"  // a=fingeprint
     "a=recvonly\r\n";
 
-void populate_answer(char *answer, char *ice_ufrag, char *ice_pwd,
-                     char *fingerprint, int include_audio) {
+void populate_answer(char *answer, int include_audio) {
     if (include_audio) {
-        sprintf(answer, sdp_audio, ice_ufrag, ice_pwd, fingerprint, ice_ufrag,
-                ice_pwd, fingerprint);
+        sprintf(answer, sdp_audio, answer_ice_ufrag, answer_ice_pwd,
+                answer_fingerprint, answer_ice_ufrag, answer_ice_pwd,
+                answer_fingerprint);
     } else {
-        sprintf(answer, sdp_no_audio, ice_ufrag, ice_pwd, fingerprint);
+        sprintf(answer, sdp_no_audio, answer_ice_ufrag, answer_ice_pwd,
+                answer_fingerprint);
     }
 }

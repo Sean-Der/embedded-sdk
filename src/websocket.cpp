@@ -22,22 +22,26 @@
 #define LIVEKIT_PROTOCOL_VERSION 3
 
 static const char *SDP_TYPE_ANSWER = "answer";
+static const char *SDP_TYPE_OFFER = "offer";
 
 // Mutex used for all global state
 SemaphoreHandle_t g_mutex;
 
-// answer_status is a FSM of the following states
+// subscriber_status is a FSM of the following states
 // * 0 - NoOp, don't send an answer
 // * 1 - Send an answer with audio removed
 // * 2 - Send an answer with audio enabled
-int answer_status = 0;
+int subscriber_status = 0;
+
+extern int publisher_status;
+extern char *publisher_signaling_buffer;
 
 // Offer + ICE Candidates. Captured in signaling thread
 // and set PeerConnection thread
-extern char *offer_buffer;
+extern char *subscriber_offer_buffer;
 extern char *ice_candidate_buffer;
 
-extern char *answer_ice_ufrag;
+extern char *subscriber_answer_ice_ufrag;
 
 extern PeerConnection *subscriber_peer_connection;
 extern PeerConnection *publisher_peer_connection;
@@ -67,6 +71,10 @@ void app_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
       }
 
       if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
+        if (ice_candidate_buffer != NULL) {
+          return;
+        }
+
         ice_candidate_buffer = strdup(candidate_obj->valuestring);
         xSemaphoreGive(g_mutex);
       }
@@ -79,12 +87,12 @@ void app_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
 
       if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
         if (strstr(packet->offer->sdp, "m=audio")) {
-          answer_status = 2;
+          subscriber_status = 2;
         } else {
-          answer_status = 1;
+          subscriber_status = 1;
         }
 
-        offer_buffer = strdup(packet->offer->sdp);
+        subscriber_offer_buffer = strdup(packet->offer->sdp);
         xSemaphoreGive(g_mutex);
       }
 
@@ -98,12 +106,23 @@ void app_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
       break;
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_ANSWER:
       ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_ANSWER\n");
+      if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
+        publisher_signaling_buffer = strdup(packet->answer->sdp);
+        publisher_status = 4;
+        xSemaphoreGive(g_mutex);
+      }
+
       break;
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_UPDATE:
       ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_UPDATE\n");
       break;
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRACK_PUBLISHED:
       ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRACK_PUBLISHED\n");
+      if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
+        publisher_status = 2;
+        xSemaphoreGive(g_mutex);
+      }
+
       break;
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_LEAVE:
       ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_LEAVE\n");
@@ -209,32 +228,46 @@ void app_websocket(void) {
 
   while (true) {
     if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
-      if (answer_status == 1) {
+      if (publisher_status == 1) {
         Livekit__SignalRequest r = LIVEKIT__SIGNAL_REQUEST__INIT;
         Livekit__AddTrackRequest a = LIVEKIT__ADD_TRACK_REQUEST__INIT;
 
-        a.cid = "microphone";
-        a.name = "microphone";
+        a.cid = (char *)"microphone";
+        a.name = (char *)"microphone";
         a.source = LIVEKIT__TRACK_SOURCE__MICROPHONE;
 
         r.add_track = &a;
         r.message_case = LIVEKIT__SIGNAL_REQUEST__MESSAGE_ADD_TRACK;
 
         pack_and_send_signal_request(&r, client);
-      }
-
-      if (answer_status != 0 && answer_ice_ufrag != NULL) {
+        publisher_status = 0;
+      } else if (publisher_status == 3) {
         Livekit__SignalRequest r = LIVEKIT__SIGNAL_REQUEST__INIT;
         Livekit__SessionDescription s = LIVEKIT__SESSION_DESCRIPTION__INIT;
 
-        populate_answer(answer_buffer, answer_status == 2);
+        s.sdp = publisher_signaling_buffer;
+        s.type = (char *)SDP_TYPE_OFFER;
+        r.offer = &s;
+        r.message_case = LIVEKIT__SIGNAL_REQUEST__MESSAGE_OFFER;
+
+        pack_and_send_signal_request(&r, client);
+        free(publisher_signaling_buffer);
+        publisher_signaling_buffer = NULL;
+        publisher_status = 0;
+      }
+
+      if (subscriber_status != 0 && subscriber_answer_ice_ufrag != NULL) {
+        Livekit__SignalRequest r = LIVEKIT__SIGNAL_REQUEST__INIT;
+        Livekit__SessionDescription s = LIVEKIT__SESSION_DESCRIPTION__INIT;
+
+        populate_answer(answer_buffer, subscriber_status == 2);
         s.sdp = answer_buffer;
         s.type = (char *)SDP_TYPE_ANSWER;
         r.answer = &s;
         r.message_case = LIVEKIT__SIGNAL_REQUEST__MESSAGE_ANSWER;
 
         pack_and_send_signal_request(&r, client);
-        answer_status = 0;
+        subscriber_status = 0;
       }
 
       xSemaphoreGive(g_mutex);

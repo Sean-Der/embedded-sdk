@@ -12,3 +12,6 @@ CONFIG_MBEDTLS_SSL_PROTO_DTLS=y
 
 # libpeer requires large stack allocations
 CONFIG_PTHREAD_TASK_STACK_SIZE_DEFAULT=8192
+
+# Defaults to partitions.csv
+CONFIG_PARTITION_TABLE_CUSTOM=y

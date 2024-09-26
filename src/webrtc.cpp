@@ -126,7 +126,7 @@ PeerConnection *lk_create_peer_connection(int isPublisher) {
       .ice_servers = {},
       .audio_codec = CODEC_OPUS,
       .video_codec = CODEC_NONE,
-      .datachannel = DATA_CHANNEL_STRING,
+      .datachannel = DATA_CHANNEL_NONE,
       .onaudiotrack = [](uint8_t *data, size_t size, void *userdata) -> void {},
       .onvideotrack = NULL,
       .on_request_keyframe = NULL,

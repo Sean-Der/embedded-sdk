@@ -179,13 +179,14 @@ static void lk_websocket_event_handler(void *handler_args,
   }
 }
 
-void pack_and_send_signal_request(const Livekit__SignalRequest *r,
-                                  esp_websocket_client *client) {
+void lk_pack_and_send_signal_request(const Livekit__SignalRequest *r,
+                                     esp_websocket_client *client) {
   auto size = livekit__signal_request__get_packed_size(r);
   auto *buffer = (uint8_t *)malloc(size);
   livekit__signal_request__pack(r, buffer);
   auto len = esp_websocket_client_send_bin(client, (char *)buffer, size,
                                            portMAX_DELAY);
+  free(buffer);
   if (len == -1) {
     ESP_LOGI(LOG_TAG, "Failed to send answer");
   }
@@ -224,7 +225,7 @@ void lk_websocket(const char *room_url, const char *token) {
   subscriber_peer_connection = lk_create_peer_connection(/* isPublisher */ 0);
   publisher_peer_connection = lk_create_peer_connection(/* isPublisher */ 1);
 
-  pthread_create(&peer_connection_thread_handle, NULL, peer_connection_task,
+  pthread_create(&peer_connection_thread_handle, NULL, lk_peer_connection_task,
                  NULL);
 
   while (true) {
@@ -240,7 +241,7 @@ void lk_websocket(const char *room_url, const char *token) {
         r.add_track = &a;
         r.message_case = LIVEKIT__SIGNAL_REQUEST__MESSAGE_ADD_TRACK;
 
-        pack_and_send_signal_request(&r, client);
+        lk_pack_and_send_signal_request(&r, client);
         publisher_status = 0;
       } else if (publisher_status == 3) {
         Livekit__SignalRequest r = LIVEKIT__SIGNAL_REQUEST__INIT;
@@ -251,7 +252,7 @@ void lk_websocket(const char *room_url, const char *token) {
         r.offer = &s;
         r.message_case = LIVEKIT__SIGNAL_REQUEST__MESSAGE_OFFER;
 
-        pack_and_send_signal_request(&r, client);
+        lk_pack_and_send_signal_request(&r, client);
         free(publisher_signaling_buffer);
         publisher_signaling_buffer = NULL;
         publisher_status = 0;
@@ -267,7 +268,7 @@ void lk_websocket(const char *room_url, const char *token) {
         r.answer = &s;
         r.message_case = LIVEKIT__SIGNAL_REQUEST__MESSAGE_ANSWER;
 
-        pack_and_send_signal_request(&r, client);
+        lk_pack_and_send_signal_request(&r, client);
         subscriber_status = 0;
       }
 

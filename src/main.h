@@ -8,10 +8,6 @@ struct CallRequest {
   std::string system_prompt;
 };
 
-struct CallResponse {
-  std::string join_url;
-};
-
 void app_wifi(void);
 void uv_run(const CallRequest &request, const char *api_key);
 PeerConnection *lk_create_peer_connection(int isPublisher);

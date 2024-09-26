@@ -186,6 +186,7 @@ void lk_pack_and_send_signal_request(const Livekit__SignalRequest *r,
   livekit__signal_request__pack(r, buffer);
   auto len = esp_websocket_client_send_bin(client, (char *)buffer, size,
                                            portMAX_DELAY);
+  free(buffer);
   if (len == -1) {
     ESP_LOGI(LOG_TAG, "Failed to send answer");
   }

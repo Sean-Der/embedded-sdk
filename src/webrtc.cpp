@@ -135,6 +135,10 @@ PeerConnection *lk_create_peer_connection(int isPublisher) {
 
   PeerConnection *peer_connection =
       peer_connection_create(&peer_connection_config);
+  if (peer_connection == NULL) {
+    ESP_LOGE(LOG_TAG, "Failed to create peer connection");
+    return NULL;
+  }
 
   if (isPublisher) {
     peer_connection_oniceconnectionstatechange(

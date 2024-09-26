@@ -66,11 +66,11 @@ static esp_err_t http_event_handler(esp_http_client_event_t *event) {
   return ESP_OK;
 }
 
-static std::string http_post(const std::string &path,
-                             const std::string &request_json,
-                             const std::string &api_key) {
+static std::string http_post(const char *path, const char *request_json,
+                             const char *api_key) {
   std::unique_ptr<HttpResponseData> data(new HttpResponseData());
-  std::string url = ULTRAVOX_API_URL + path;
+  std::string url = ULTRAVOX_API_URL;
+  url += path;
   esp_http_client_config_t config;
   memset(&config, 0, sizeof(config));
   config.url = url.c_str();
@@ -80,9 +80,8 @@ static std::string http_post(const std::string &path,
 
   esp_http_client_set_method(client, HTTP_METHOD_POST);
   esp_http_client_set_header(client, "Content-Type", "application/json");
-  esp_http_client_set_header(client, "x-api-key", api_key.c_str());
-  esp_http_client_set_post_field(client, request_json.c_str(),
-                                 request_json.length());
+  esp_http_client_set_header(client, "x-api-key", api_key);
+  esp_http_client_set_post_field(client, request_json, strlen(request_json));
 
   esp_err_t err = esp_http_client_perform(client);
   if (err == ESP_OK) {
@@ -98,15 +97,16 @@ static std::string http_post(const std::string &path,
 }
 
 static CallResponse create_call(const CallRequest &request,
-                                const std::string &api_key) {
+                                const char *api_key) {
   // format request to json
   cJSON *request_json = cJSON_CreateObject();
   cJSON_AddStringToObject(request_json, "systemPrompt",
                           request.system_prompt.c_str());
   // cJSON_AddStringToObject(request_json, "maxDuration", "00:00:30");
-  std::string request_str = cJSON_Print(request_json);
-
+  char *request_str = cJSON_Print(request_json);
   std::string response_str = http_post("/calls", request_str, api_key);
+  free(request_str);
+
   ESP_LOGI(LOG_TAG, "Response: %s", response_str.c_str());
   cJSON *response_json = cJSON_Parse(response_str.c_str());
   if (response_json == NULL) {
@@ -184,7 +184,7 @@ static void uv_websocket_event_handler(void *handler_args,
   }
 }
 
-void uv_run(const CallRequest &callRequest, const std::string &apiKey) {
+void uv_run(const CallRequest &callRequest, const char *apiKey) {
   CallResponse call_response = create_call(callRequest, apiKey);
   ESP_LOGI(LOG_TAG, "Call response: %s", call_response.join_url.c_str());
 

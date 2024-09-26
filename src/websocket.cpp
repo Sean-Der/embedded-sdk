@@ -192,88 +192,87 @@ void pack_and_send_signal_request(const Livekit__SignalRequest *r,
 }
 
 void lk_websocket(const char *room_url, const char *token) {
-  void app_websocket(void) {
-    g_mutex = xSemaphoreCreateMutex();
-    if (g_mutex == NULL) {
-      ESP_LOGE(LOG_TAG, "Failed to create mutex.\n");
-      return;
-    }
-
-    char *answer_buffer = (char *)calloc(1, ANSWER_BUFFER_SIZE);
-
-    char ws_uri[WEBSOCKET_URI_SIZE];
-    snprintf(ws_uri, WEBSOCKET_URI_SIZE,
-             "%s/rtc?protocol=%d&access_token=%s&auto_subscribe=true", room_url,
-             LIVEKIT_PROTOCOL_VERSION, token);
-    ESP_LOGI(LOG_TAG, "WebSocket URI: %s", ws_uri);
-
-    esp_websocket_client_config_t ws_cfg;
-    memset(&ws_cfg, 0, sizeof(ws_cfg));
-
-    ws_cfg.uri = ws_uri;
-    ws_cfg.buffer_size = MTU_SIZE;
-    ws_cfg.disable_pingpong_discon = true;
-    ws_cfg.reconnect_timeout_ms = 1000;
-    ws_cfg.network_timeout_ms = 1000;
-
-    auto client = esp_websocket_client_init(&ws_cfg);
-    esp_websocket_register_events(client, WEBSOCKET_EVENT_ANY,
-                                  lk_websocket_event_handler, (void *)client);
-    esp_websocket_client_start(client);
-
-    pthread_t peer_connection_thread_handle;
-    subscriber_peer_connection = lk_create_peer_connection(/* isPublisher */ 0);
-    publisher_peer_connection = lk_create_peer_connection(/* isPublisher */ 1);
-
-    pthread_create(&peer_connection_thread_handle, NULL, peer_connection_task,
-                   NULL);
-
-    while (true) {
-      if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
-        if (publisher_status == 1) {
-          Livekit__SignalRequest r = LIVEKIT__SIGNAL_REQUEST__INIT;
-          Livekit__AddTrackRequest a = LIVEKIT__ADD_TRACK_REQUEST__INIT;
-
-          a.cid = (char *)"microphone";
-          a.name = (char *)"microphone";
-          a.source = LIVEKIT__TRACK_SOURCE__MICROPHONE;
-
-          r.add_track = &a;
-          r.message_case = LIVEKIT__SIGNAL_REQUEST__MESSAGE_ADD_TRACK;
-
-          pack_and_send_signal_request(&r, client);
-          publisher_status = 0;
-        } else if (publisher_status == 3) {
-          Livekit__SignalRequest r = LIVEKIT__SIGNAL_REQUEST__INIT;
-          Livekit__SessionDescription s = LIVEKIT__SESSION_DESCRIPTION__INIT;
-
-          s.sdp = publisher_signaling_buffer;
-          s.type = (char *)SDP_TYPE_OFFER;
-          r.offer = &s;
-          r.message_case = LIVEKIT__SIGNAL_REQUEST__MESSAGE_OFFER;
-
-          pack_and_send_signal_request(&r, client);
-          free(publisher_signaling_buffer);
-          publisher_signaling_buffer = NULL;
-          publisher_status = 0;
-        }
-
-        if (subscriber_status != 0 && subscriber_answer_ice_ufrag != NULL) {
-          Livekit__SignalRequest r = LIVEKIT__SIGNAL_REQUEST__INIT;
-          Livekit__SessionDescription s = LIVEKIT__SESSION_DESCRIPTION__INIT;
-
-          lk_populate_answer(answer_buffer, subscriber_status == 2);
-          s.sdp = answer_buffer;
-          s.type = (char *)SDP_TYPE_ANSWER;
-          r.answer = &s;
-          r.message_case = LIVEKIT__SIGNAL_REQUEST__MESSAGE_ANSWER;
-
-          pack_and_send_signal_request(&r, client);
-          subscriber_status = 0;
-        }
-
-        xSemaphoreGive(g_mutex);
-      }
-      vTaskDelay(pdMS_TO_TICKS(200));
-    }
+  g_mutex = xSemaphoreCreateMutex();
+  if (g_mutex == NULL) {
+    ESP_LOGE(LOG_TAG, "Failed to create mutex.\n");
+    return;
   }
+
+  char *answer_buffer = (char *)calloc(1, ANSWER_BUFFER_SIZE);
+
+  char ws_uri[WEBSOCKET_URI_SIZE];
+  snprintf(ws_uri, WEBSOCKET_URI_SIZE,
+           "%s/rtc?protocol=%d&access_token=%s&auto_subscribe=true", room_url,
+           LIVEKIT_PROTOCOL_VERSION, token);
+  ESP_LOGI(LOG_TAG, "WebSocket URI: %s", ws_uri);
+
+  esp_websocket_client_config_t ws_cfg;
+  memset(&ws_cfg, 0, sizeof(ws_cfg));
+
+  ws_cfg.uri = ws_uri;
+  ws_cfg.buffer_size = MTU_SIZE;
+  ws_cfg.disable_pingpong_discon = true;
+  ws_cfg.reconnect_timeout_ms = 1000;
+  ws_cfg.network_timeout_ms = 1000;
+
+  auto client = esp_websocket_client_init(&ws_cfg);
+  esp_websocket_register_events(client, WEBSOCKET_EVENT_ANY,
+                                lk_websocket_event_handler, (void *)client);
+  esp_websocket_client_start(client);
+
+  pthread_t peer_connection_thread_handle;
+  subscriber_peer_connection = lk_create_peer_connection(/* isPublisher */ 0);
+  publisher_peer_connection = lk_create_peer_connection(/* isPublisher */ 1);
+
+  pthread_create(&peer_connection_thread_handle, NULL, peer_connection_task,
+                 NULL);
+
+  while (true) {
+    if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
+      if (publisher_status == 1) {
+        Livekit__SignalRequest r = LIVEKIT__SIGNAL_REQUEST__INIT;
+        Livekit__AddTrackRequest a = LIVEKIT__ADD_TRACK_REQUEST__INIT;
+
+        a.cid = (char *)"microphone";
+        a.name = (char *)"microphone";
+        a.source = LIVEKIT__TRACK_SOURCE__MICROPHONE;
+
+        r.add_track = &a;
+        r.message_case = LIVEKIT__SIGNAL_REQUEST__MESSAGE_ADD_TRACK;
+
+        pack_and_send_signal_request(&r, client);
+        publisher_status = 0;
+      } else if (publisher_status == 3) {
+        Livekit__SignalRequest r = LIVEKIT__SIGNAL_REQUEST__INIT;
+        Livekit__SessionDescription s = LIVEKIT__SESSION_DESCRIPTION__INIT;
+
+        s.sdp = publisher_signaling_buffer;
+        s.type = (char *)SDP_TYPE_OFFER;
+        r.offer = &s;
+        r.message_case = LIVEKIT__SIGNAL_REQUEST__MESSAGE_OFFER;
+
+        pack_and_send_signal_request(&r, client);
+        free(publisher_signaling_buffer);
+        publisher_signaling_buffer = NULL;
+        publisher_status = 0;
+      }
+
+      if (subscriber_status != 0 && subscriber_answer_ice_ufrag != NULL) {
+        Livekit__SignalRequest r = LIVEKIT__SIGNAL_REQUEST__INIT;
+        Livekit__SessionDescription s = LIVEKIT__SESSION_DESCRIPTION__INIT;
+
+        lk_populate_answer(answer_buffer, subscriber_status == 2);
+        s.sdp = answer_buffer;
+        s.type = (char *)SDP_TYPE_ANSWER;
+        r.answer = &s;
+        r.message_case = LIVEKIT__SIGNAL_REQUEST__MESSAGE_ANSWER;
+
+        pack_and_send_signal_request(&r, client);
+        subscriber_status = 0;
+      }
+
+      xSemaphoreGive(g_mutex);
+    }
+    vTaskDelay(pdMS_TO_TICKS(200));
+  }
+}

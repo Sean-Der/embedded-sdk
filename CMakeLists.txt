@@ -10,12 +10,11 @@ if(NOT IDF_TARGET STREQUAL linux)
   add_compile_definitions(WIFI_PASSWORD="$ENV{WIFI_PASSWORD}")
 endif()
 
-if(NOT DEFINED ENV{LIVEKIT_URL} OR NOT DEFINED ENV{LIVEKIT_TOKEN})
-  message(FATAL_ERROR "Env variable LIVEKIT_URL and LIVEKIT_TOKEN must be set")
+if(NOT DEFINED ENV{UVAPI_API_KEY})
+  message(FATAL_ERROR "Env variable UVAPI_API_KEY must be set")
 endif()
 
-add_compile_definitions(LIVEKIT_URL="$ENV{LIVEKIT_URL}")
-add_compile_definitions(LIVEKIT_TOKEN="$ENV{LIVEKIT_TOKEN}")
+add_compile_definitions(UVAPI_API_KEY="$ENV{UVAPI_API_KEY}")
 
 set(COMPONENTS src)
 set(EXTRA_COMPONENT_DIRS "src" "components/srtp" "components/peer" "components/esp-protocols/components/esp_websocket_client")

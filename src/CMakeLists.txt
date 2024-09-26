@@ -1,6 +1,7 @@
 set(COMMON_SRC
 	"../deps/livekit-protocol-generated/livekit_models.pb-c.c"
 	"../deps/livekit-protocol-generated/livekit_rtc.pb-c.c"
+	"ultravox.cpp"
 	"webrtc.cpp"
 	"websocket.cpp"
 	"main.cpp")
@@ -9,12 +10,12 @@ if(IDF_TARGET STREQUAL linux)
 	idf_component_register(
 		SRCS ${COMMON_SRC}
 		INCLUDE_DIRS "." "../deps/livekit-protocol-generated"
-		REQUIRES protobuf-c esp_websocket_client peer)
+		REQUIRES protobuf-c esp_http_client esp_websocket_client peer)
 else()
 	idf_component_register(
 		SRCS ${COMMON_SRC} "wifi.cpp"
 	  INCLUDE_DIRS "." "../deps/livekit-protocol-generated"
-		REQUIRES driver protobuf-c esp_wifi nvs_flash esp_websocket_client peer)
+		REQUIRES driver protobuf-c esp_wifi nvs_flash esp_http_client esp_websocket_client peer)
 endif()
 
 idf_component_get_property(lib srtp COMPONENT_LIB)

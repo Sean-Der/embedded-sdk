@@ -8,6 +8,8 @@
 
 #include "main.h"
 
+static bool g_wifi_connected = false;
+
 static void event_handler(void *arg, esp_event_base_t event_base,
                           int32_t event_id, void *event_data) {
   static int s_retry_num = 0;
@@ -21,6 +23,7 @@ static void event_handler(void *arg, esp_event_base_t event_base,
   } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
     ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
     ESP_LOGI(LOG_TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
+    g_wifi_connected = true;
   }
 }
 
@@ -39,6 +42,7 @@ void app_wifi(void) {
   ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
   ESP_ERROR_CHECK(esp_wifi_start());
 
+  ESP_LOGI(LOG_TAG, "Connecting to WiFi SSID: %s", WIFI_SSID);
   wifi_config_t wifi_config;
   memset(&wifi_config, 0, sizeof(wifi_config));
   strncpy((char *)wifi_config.sta.ssid, (char *)WIFI_SSID,
@@ -49,4 +53,9 @@ void app_wifi(void) {
   ESP_ERROR_CHECK(esp_wifi_set_config(
       static_cast<wifi_interface_t>(ESP_IF_WIFI_STA), &wifi_config));
   ESP_ERROR_CHECK(esp_wifi_connect());
+
+  // block until we get an IP address
+  while (!g_wifi_connected) {
+    vTaskDelay(pdMS_TO_TICKS(200));
+  }
 }

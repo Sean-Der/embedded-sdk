@@ -7,30 +7,29 @@
 
 static void onconnectionstatechange_task(PeerConnectionState state,
                                          void *user_data) {
-    ESP_LOGI(LOG_TAG, "PeerConnectionState: %s",
-             peer_connection_state_to_string(state));
+  ESP_LOGI(LOG_TAG, "PeerConnectionState: %s",
+           peer_connection_state_to_string(state));
 }
 
-PeerConnection *app_create_peer_connection() {
-    PeerConfiguration peer_connection_config = {
-        .ice_servers = {},
-        .audio_codec = CODEC_OPUS,
-        .video_codec = CODEC_NONE,
-        .datachannel = DATA_CHANNEL_STRING,
-        .onaudiotrack = [](uint8_t *data, size_t size, void *userdata) -> void {
-        },
-        .onvideotrack = NULL,
-        .on_request_keyframe = NULL,
-        .user_data = NULL,
-    };
+PeerConnection *lk_create_peer_connection() {
+  PeerConfiguration peer_connection_config = {
+      .ice_servers = {},
+      .audio_codec = CODEC_OPUS,
+      .video_codec = CODEC_NONE,
+      .datachannel = DATA_CHANNEL_STRING,
+      .onaudiotrack = [](uint8_t *data, size_t size, void *userdata) -> void {},
+      .onvideotrack = NULL,
+      .on_request_keyframe = NULL,
+      .user_data = NULL,
+  };
 
-    PeerConnection *peer_connection =
-        peer_connection_create(&peer_connection_config);
+  PeerConnection *peer_connection =
+      peer_connection_create(&peer_connection_config);
 
-    peer_connection_oniceconnectionstatechange(peer_connection,
-                                               onconnectionstatechange_task);
+  peer_connection_oniceconnectionstatechange(peer_connection,
+                                             onconnectionstatechange_task);
 
-    return peer_connection;
+  return peer_connection;
 }
 
 static const char *sdp_no_audio =
@@ -75,12 +74,12 @@ static const char *sdp_audio =
     "%s\r\n"  // a=fingeprint
     "a=recvonly\r\n";
 
-void populate_answer(char *answer, char *ice_ufrag, char *ice_pwd,
-                     char *fingerprint, int include_audio) {
-    if (include_audio) {
-        sprintf(answer, sdp_audio, ice_ufrag, ice_pwd, fingerprint, ice_ufrag,
-                ice_pwd, fingerprint);
-    } else {
-        sprintf(answer, sdp_no_audio, ice_ufrag, ice_pwd, fingerprint);
-    }
+void lk_populate_answer(char *answer, char *ice_ufrag, char *ice_pwd,
+                        char *fingerprint, int include_audio) {
+  if (include_audio) {
+    sprintf(answer, sdp_audio, ice_ufrag, ice_pwd, fingerprint, ice_ufrag,
+            ice_pwd, fingerprint);
+  } else {
+    sprintf(answer, sdp_no_audio, ice_ufrag, ice_pwd, fingerprint);
+  }
 }

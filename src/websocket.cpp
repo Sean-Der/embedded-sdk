@@ -16,8 +16,8 @@
 
 #include "main.h"
 
-#define WEBSOCKET_URI_SIZE 400
-#define ANSWER_BUFFER_SIZE 1000
+#define WEBSOCKET_URI_SIZE 1024
+#define ANSWER_BUFFER_SIZE 1024
 #define MTU_SIZE 1500
 #define LIVEKIT_PROTOCOL_VERSION 3
 
@@ -85,7 +85,7 @@ void *peer_connection_task(void *user_data) {
   return NULL;
 }
 
-void app_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
+void lk_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
   switch (packet->message_case) {
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRICKLE: {
       ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRICKLE\n");
@@ -165,9 +165,9 @@ void app_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
   }
 }
 
-static void app_websocket_event_handler(void *handler_args,
-                                        esp_event_base_t base, int32_t event_id,
-                                        void *event_data) {
+static void lk_websocket_event_handler(void *handler_args,
+                                       esp_event_base_t base, int32_t event_id,
+                                       void *event_data) {
   esp_websocket_event_data_t *data = (esp_websocket_event_data_t *)event_data;
   switch (event_id) {
     case WEBSOCKET_EVENT_CONNECTED:
@@ -190,7 +190,7 @@ static void app_websocket_event_handler(void *handler_args,
         esp_restart();
 #endif
       } else {
-        app_websocket_handle_livekit_response(new_response);
+        lk_websocket_handle_livekit_response(new_response);
       }
 
       livekit__signal_response__free_unpacked(new_response, NULL);
@@ -203,7 +203,7 @@ static void app_websocket_event_handler(void *handler_args,
   }
 }
 
-void app_websocket(void) {
+void lk_websocket(const char *room_url, const char *token) {
   g_mutex = xSemaphoreCreateMutex();
   if (g_mutex == NULL) {
     ESP_LOGE(LOG_TAG, "Failed to create mutex.\n");
@@ -214,8 +214,9 @@ void app_websocket(void) {
 
   char ws_uri[WEBSOCKET_URI_SIZE];
   snprintf(ws_uri, WEBSOCKET_URI_SIZE,
-           "%s/rtc?protocol=%d&access_token=%s&auto_subscribe=true",
-           LIVEKIT_URL, LIVEKIT_PROTOCOL_VERSION, LIVEKIT_TOKEN);
+           "%s/rtc?protocol=%d&access_token=%s&auto_subscribe=true", room_url,
+           LIVEKIT_PROTOCOL_VERSION, token);
+  ESP_LOGI(LOG_TAG, "WebSocket URI: %s", ws_uri);
 
   esp_websocket_client_config_t ws_cfg;
   memset(&ws_cfg, 0, sizeof(ws_cfg));
@@ -228,10 +229,10 @@ void app_websocket(void) {
 
   auto client = esp_websocket_client_init(&ws_cfg);
   esp_websocket_register_events(client, WEBSOCKET_EVENT_ANY,
-                                app_websocket_event_handler, (void *)client);
+                                lk_websocket_event_handler, (void *)client);
   esp_websocket_client_start(client);
 
-  auto subscriber_peer_connection = app_create_peer_connection();
+  auto subscriber_peer_connection = lk_create_peer_connection();
 
   peer_connection_onicecandidate(subscriber_peer_connection,
                                  on_icecandidate_task);
@@ -246,8 +247,8 @@ void app_websocket(void) {
         Livekit__SignalRequest r = LIVEKIT__SIGNAL_REQUEST__INIT;
         Livekit__SessionDescription s = LIVEKIT__SESSION_DESCRIPTION__INIT;
 
-        populate_answer(answer_buffer, answer_ice_ufrag, answer_ice_pwd,
-                        answer_fingerprint, answer_status == 2);
+        lk_populate_answer(answer_buffer, answer_ice_ufrag, answer_ice_pwd,
+                           answer_fingerprint, answer_status == 2);
         s.sdp = answer_buffer;
         s.type = (char *)SDP_TYPE_ANSWER;
         r.answer = &s;

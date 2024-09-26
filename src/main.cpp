@@ -17,13 +17,13 @@ extern "C" void app_main(void) {
 
   ESP_ERROR_CHECK(esp_event_loop_create_default());
   peer_init();
-  app_wifi();
-  app_websocket();
+  lk_wifi();
+  lk_websocket();
 }
 #else
 int main(void) {
   ESP_ERROR_CHECK(esp_event_loop_create_default());
   peer_init();
-  app_websocket();
+  lk_websocket();
 }
 #endif

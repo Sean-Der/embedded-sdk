@@ -28,14 +28,14 @@ char *publisher_signaling_buffer = NULL;
 PeerConnection *subscriber_peer_connection = NULL;
 PeerConnection *publisher_peer_connection = NULL;
 
-static void publisher_onconnectionstatechange_task(PeerConnectionState state,
-                                                   void *user_data) {
+static void lk_publisher_onconnectionstatechange_task(PeerConnectionState state,
+                                                      void *user_data) {
   ESP_LOGI(LOG_TAG, "Publisher PeerConnectionState: %s",
            peer_connection_state_to_string(state));
 }
 
-static void subscriber_onconnectionstatechange_task(PeerConnectionState state,
-                                                    void *user_data) {
+static void lk_subscriber_onconnectionstatechange_task(
+    PeerConnectionState state, void *user_data) {
   ESP_LOGI(LOG_TAG, "Subscriber PeerConnectionState: %s",
            peer_connection_state_to_string(state));
 
@@ -47,8 +47,8 @@ static void subscriber_onconnectionstatechange_task(PeerConnectionState state,
 
 // subscriber_on_icecandidate_task holds lock because peer_connection_task is
 // what causes it to be fired
-static void subscriber_on_icecandidate_task(char *description,
-                                            void *user_data) {
+static void lk_subscriber_on_icecandidate_task(char *description,
+                                               void *user_data) {
   auto fingerprint = strstr(description, "a=fingerprint");
   subscriber_answer_fingerprint =
       strndup(fingerprint, (int)(strchr(fingerprint, '\r') - fingerprint));
@@ -62,14 +62,16 @@ static void subscriber_on_icecandidate_task(char *description,
       strndup(icePwd, (int)(strchr(icePwd, '\r') - icePwd));
 }
 
-static void publisher_on_icecandidate_task(char *description, void *user_data) {
+static void lk_publisher_on_icecandidate_task(char *description,
+                                              void *user_data) {
   publisher_signaling_buffer = strdup(description);
   publisher_status = 3;
 }
 
 // Given a Remote Description + ICE Candidate do a Set+Free on a PeerConnection
-void process_signaling_values(PeerConnection *peer_connection,
-                              char **ice_candidate, char **remote_description) {
+void lk_process_signaling_values(PeerConnection *peer_connection,
+                                 char **ice_candidate,
+                                 char **remote_description) {
   // If PeerConnection hasn't gone to completed we need a ICECandidate and
   // RemoteDescription libpeer doesn't support Trickle ICE
   auto state = peer_connection_get_state(peer_connection);
@@ -93,20 +95,21 @@ void process_signaling_values(PeerConnection *peer_connection,
   }
 }
 
-void *peer_connection_task(void *user_data) {
+void *lk_peer_connection_task(void *user_data) {
   while (1) {
     if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
       if (publisher_status == 2) {
         peer_connection_create_offer(publisher_peer_connection);
         publisher_status = 0;
       } else if (publisher_status == 4) {
-        process_signaling_values(publisher_peer_connection,
-                                 &ice_candidate_buffer,
-                                 &publisher_signaling_buffer);
+        lk_process_signaling_values(publisher_peer_connection,
+                                    &ice_candidate_buffer,
+                                    &publisher_signaling_buffer);
       }
 
-      process_signaling_values(subscriber_peer_connection,
-                               &ice_candidate_buffer, &subscriber_offer_buffer);
+      lk_process_signaling_values(subscriber_peer_connection,
+                                  &ice_candidate_buffer,
+                                  &subscriber_offer_buffer);
 
       xSemaphoreGive(g_mutex);
     }
@@ -121,7 +124,7 @@ void *peer_connection_task(void *user_data) {
   return NULL;
 }
 
-PeerConnection *app_create_peer_connection(int isPublisher) {
+PeerConnection *lk_create_peer_connection(int isPublisher) {
   PeerConfiguration peer_connection_config = {
       .ice_servers = {},
       .audio_codec = CODEC_OPUS,
@@ -138,14 +141,14 @@ PeerConnection *app_create_peer_connection(int isPublisher) {
 
   if (isPublisher) {
     peer_connection_oniceconnectionstatechange(
-        peer_connection, publisher_onconnectionstatechange_task);
+        peer_connection, lk_publisher_onconnectionstatechange_task);
     peer_connection_onicecandidate(peer_connection,
-                                   publisher_on_icecandidate_task);
+                                   lk_publisher_on_icecandidate_task);
   } else {
     peer_connection_oniceconnectionstatechange(
-        peer_connection, subscriber_onconnectionstatechange_task);
+        peer_connection, lk_subscriber_onconnectionstatechange_task);
     peer_connection_onicecandidate(peer_connection,
-                                   subscriber_on_icecandidate_task);
+                                   lk_subscriber_on_icecandidate_task);
   }
 
   return peer_connection;
@@ -193,7 +196,7 @@ static const char *sdp_audio =
     "%s\r\n"  // a=fingeprint
     "a=recvonly\r\n";
 
-void populate_answer(char *answer, int include_audio) {
+void lk_populate_answer(char *answer, int include_audio) {
   if (include_audio) {
     sprintf(answer, sdp_audio, subscriber_answer_ice_ufrag,
             subscriber_answer_ice_pwd, subscriber_answer_fingerprint,

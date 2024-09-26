@@ -46,7 +46,7 @@ extern char *subscriber_answer_ice_ufrag;
 extern PeerConnection *subscriber_peer_connection;
 extern PeerConnection *publisher_peer_connection;
 
-void app_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
+void lk_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
   switch (packet->message_case) {
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRICKLE: {
       ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRICKLE\n");
@@ -141,9 +141,9 @@ void app_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
   }
 }
 
-static void app_websocket_event_handler(void *handler_args,
-                                        esp_event_base_t base, int32_t event_id,
-                                        void *event_data) {
+static void lk_websocket_event_handler(void *handler_args,
+                                       esp_event_base_t base, int32_t event_id,
+                                       void *event_data) {
   esp_websocket_event_data_t *data = (esp_websocket_event_data_t *)event_data;
   switch (event_id) {
     case WEBSOCKET_EVENT_CONNECTED:
@@ -166,7 +166,7 @@ static void app_websocket_event_handler(void *handler_args,
         esp_restart();
 #endif
       } else {
-        app_websocket_handle_livekit_response(new_response);
+        lk_websocket_handle_livekit_response(new_response);
       }
 
       livekit__signal_response__free_unpacked(new_response, NULL);
@@ -179,8 +179,8 @@ static void app_websocket_event_handler(void *handler_args,
   }
 }
 
-void pack_and_send_signal_request(const Livekit__SignalRequest *r,
-                                  esp_websocket_client *client) {
+void lk_pack_and_send_signal_request(const Livekit__SignalRequest *r,
+                                     esp_websocket_client *client) {
   auto size = livekit__signal_request__get_packed_size(r);
   auto *buffer = (uint8_t *)malloc(size);
   livekit__signal_request__pack(r, buffer);
@@ -191,7 +191,7 @@ void pack_and_send_signal_request(const Livekit__SignalRequest *r,
   }
 }
 
-void app_websocket(void) {
+void lk_websocket(void) {
   g_mutex = xSemaphoreCreateMutex();
   if (g_mutex == NULL) {
     ESP_LOGE(LOG_TAG, "Failed to create mutex.\n");
@@ -216,14 +216,14 @@ void app_websocket(void) {
 
   auto client = esp_websocket_client_init(&ws_cfg);
   esp_websocket_register_events(client, WEBSOCKET_EVENT_ANY,
-                                app_websocket_event_handler, (void *)client);
+                                lk_websocket_event_handler, (void *)client);
   esp_websocket_client_start(client);
 
   pthread_t peer_connection_thread_handle;
-  subscriber_peer_connection = app_create_peer_connection(/* isPublisher */ 0);
-  publisher_peer_connection = app_create_peer_connection(/* isPublisher */ 1);
+  subscriber_peer_connection = lk_create_peer_connection(/* isPublisher */ 0);
+  publisher_peer_connection = lk_create_peer_connection(/* isPublisher */ 1);
 
-  pthread_create(&peer_connection_thread_handle, NULL, peer_connection_task,
+  pthread_create(&peer_connection_thread_handle, NULL, lk_peer_connection_task,
                  NULL);
 
   while (true) {
@@ -239,7 +239,7 @@ void app_websocket(void) {
         r.add_track = &a;
         r.message_case = LIVEKIT__SIGNAL_REQUEST__MESSAGE_ADD_TRACK;
 
-        pack_and_send_signal_request(&r, client);
+        lk_pack_and_send_signal_request(&r, client);
         publisher_status = 0;
       } else if (publisher_status == 3) {
         Livekit__SignalRequest r = LIVEKIT__SIGNAL_REQUEST__INIT;
@@ -250,7 +250,7 @@ void app_websocket(void) {
         r.offer = &s;
         r.message_case = LIVEKIT__SIGNAL_REQUEST__MESSAGE_OFFER;
 
-        pack_and_send_signal_request(&r, client);
+        lk_pack_and_send_signal_request(&r, client);
         free(publisher_signaling_buffer);
         publisher_signaling_buffer = NULL;
         publisher_status = 0;
@@ -260,13 +260,13 @@ void app_websocket(void) {
         Livekit__SignalRequest r = LIVEKIT__SIGNAL_REQUEST__INIT;
         Livekit__SessionDescription s = LIVEKIT__SESSION_DESCRIPTION__INIT;
 
-        populate_answer(answer_buffer, subscriber_status == 2);
+        lk_populate_answer(answer_buffer, subscriber_status == 2);
         s.sdp = answer_buffer;
         s.type = (char *)SDP_TYPE_ANSWER;
         r.answer = &s;
         r.message_case = LIVEKIT__SIGNAL_REQUEST__MESSAGE_ANSWER;
 
-        pack_and_send_signal_request(&r, client);
+        lk_pack_and_send_signal_request(&r, client);
         subscriber_status = 0;
       }
 

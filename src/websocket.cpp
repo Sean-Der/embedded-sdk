@@ -234,18 +234,13 @@ void lk_websocket(void) {
       },
       NULL);
 #else
+  TaskHandle_t peer_connection_task_handle = NULL;
+  StaticTask_t task_buffer;
   StackType_t *stack_memory = (StackType_t *)heap_caps_malloc(
       20000 * sizeof(StackType_t), MALLOC_CAP_SPIRAM);
-  StaticTask_t task_buffer;
-  TaskHandle_t peer_connection_task_handle = NULL;
-  if (stack_memory) {
-    xTaskCreateStaticPinnedToCore(lk_audio_encoder_task,
-                                  "lk_audio_encoder_task", 20000, NULL, 7,
-                                  stack_memory, &task_buffer, 0);
-  }
 
-  xTaskCreatePinnedToCore(lk_peer_connection_task, "peer_connection", 8192,
-                          NULL, 5, &peer_connection_task_handle, 1);
+  xTaskCreatePinnedToCore(lk_subscriber_peer_connection_task, "lk_subscriber",
+                          8192, NULL, 5, &peer_connection_task_handle, 1);
 #endif
 
   while (true) {
@@ -263,6 +258,15 @@ void lk_websocket(void) {
 
         lk_pack_and_send_signal_request(&r, client);
         publisher_status = 0;
+
+#ifndef LINUX_BUILD
+        if (stack_memory) {
+          xTaskCreateStaticPinnedToCore(lk_publisher_peer_connection_task,
+                                        "lk_publisher", 20000, NULL, 7,
+                                        stack_memory, &task_buffer, 0);
+        }
+#endif
+
       } else if (publisher_status == 3) {
         Livekit__SignalRequest r = LIVEKIT__SIGNAL_REQUEST__INIT;
         Livekit__SessionDescription s = LIVEKIT__SESSION_DESCRIPTION__INIT;

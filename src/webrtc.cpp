@@ -104,7 +104,21 @@ void lk_process_signaling_values(PeerConnection *peer_connection,
   }
 }
 
-void lk_peer_connection_task(void *user_data) {
+void lk_subscriber_peer_connection_task(void *user_data) {
+  while (1) {
+    if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
+      lk_process_signaling_values(subscriber_peer_connection,
+                                  &ice_candidate_buffer,
+                                  &subscriber_offer_buffer);
+      xSemaphoreGive(g_mutex);
+    }
+
+    peer_connection_loop(subscriber_peer_connection);
+    vTaskDelay(pdMS_TO_TICKS(1));
+  }
+}
+
+void lk_publisher_peer_connection_task(void *user_data) {
   while (1) {
     if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
       if (publisher_status == 2) {
@@ -115,22 +129,13 @@ void lk_peer_connection_task(void *user_data) {
                                     &ice_candidate_buffer,
                                     &publisher_signaling_buffer);
       }
-
-      lk_process_signaling_values(subscriber_peer_connection,
-                                  &ice_candidate_buffer,
-                                  &subscriber_offer_buffer);
-
       xSemaphoreGive(g_mutex);
     }
 
-    peer_connection_loop(subscriber_peer_connection);
     peer_connection_loop(publisher_peer_connection);
-
     vTaskDelay(pdMS_TO_TICKS(1));
   }
-}
 
-void lk_audio_encoder_task(void *arg) {
 #ifndef LINUX_BUILD
   esp_audio_enc_handle_t enc_handle = NULL;
   esp_opus_enc_config_t opus_cfg = ESP_OPUS_ENC_CONFIG_DEFAULT();

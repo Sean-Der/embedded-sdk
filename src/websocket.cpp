@@ -220,12 +220,33 @@ void lk_websocket(void) {
                                 lk_websocket_event_handler, (void *)client);
   esp_websocket_client_start(client);
 
-  pthread_t peer_connection_thread_handle;
   subscriber_peer_connection = lk_create_peer_connection(/* isPublisher */ 0);
   publisher_peer_connection = lk_create_peer_connection(/* isPublisher */ 1);
 
-  pthread_create(&peer_connection_thread_handle, NULL, lk_peer_connection_task,
-                 NULL);
+#ifdef LINUX_BUILD
+  pthread_t peer_connection_thread_handle;
+  pthread_create(
+      &peer_connection_thread_handle, NULL,
+      [](void *) -> void * {
+        lk_peer_connection_task(NULL);
+        pthread_exit(NULL);
+        return NULL;
+      },
+      NULL);
+#else
+  StackType_t *stack_memory = (StackType_t *)heap_caps_malloc(
+      20000 * sizeof(StackType_t), MALLOC_CAP_SPIRAM);
+  StaticTask_t task_buffer;
+  TaskHandle_t peer_connection_task_handle = NULL;
+  if (stack_memory) {
+    xTaskCreateStaticPinnedToCore(lk_audio_encoder_task,
+                                  "lk_audio_encoder_task", 20000, NULL, 7,
+                                  stack_memory, &task_buffer, 0);
+  }
+
+  xTaskCreatePinnedToCore(lk_peer_connection_task, "peer_connection", 8192,
+                          NULL, 5, &peer_connection_task_handle, 1);
+#endif
 
   while (true) {
     if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {

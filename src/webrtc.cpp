@@ -1,10 +1,19 @@
+#ifndef LINUX_BUILD
+#include <driver/i2s.h>
+#include <esp_audio_enc.h>
+#include <esp_audio_enc_default.h>
+#include <esp_audio_enc_reg.h>
+#include <esp_opus_enc.h>
+#endif
+
 #include <esp_event.h>
 #include <esp_log.h>
-#include <pthread.h>
 #include <string.h>
 
 #include "main.h"
 
+// 20ms samples
+#define OPUS_OUT_BUFFER_SIZE 3840  // 1276 bytes is recommended by opus_encode
 extern SemaphoreHandle_t g_mutex;
 
 char *subscriber_offer_buffer = NULL;
@@ -95,7 +104,7 @@ void lk_process_signaling_values(PeerConnection *peer_connection,
   }
 }
 
-void *lk_peer_connection_task(void *user_data) {
+void lk_peer_connection_task(void *user_data) {
   while (1) {
     if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
       if (publisher_status == 2) {
@@ -119,9 +128,57 @@ void *lk_peer_connection_task(void *user_data) {
 
     vTaskDelay(pdMS_TO_TICKS(1));
   }
+}
 
-  pthread_exit(NULL);
-  return NULL;
+void lk_audio_encoder_task(void *arg) {
+#ifndef LINUX_BUILD
+  esp_audio_enc_handle_t enc_handle = NULL;
+  esp_opus_enc_config_t opus_cfg = ESP_OPUS_ENC_CONFIG_DEFAULT();
+  esp_audio_enc_config_t enc_cfg;
+
+  opus_cfg.channel = ESP_AUDIO_MONO;
+  enc_cfg.type = ESP_AUDIO_TYPE_OPUS;
+  enc_cfg.cfg = &opus_cfg;
+  enc_cfg.cfg_sz = sizeof(opus_cfg);
+
+  if (esp_audio_enc_open(&enc_cfg, &enc_handle) != ESP_AUDIO_ERR_OK) {
+    printf("Failed to open Opus Encoder");
+    return;
+  }
+
+  size_t bytes_read = 0;
+  esp_audio_enc_in_frame_t input_buffer = {
+      .buffer = (uint8_t *)malloc(BUFFER_SAMPLES),
+      .len = BUFFER_SAMPLES,
+  };
+  esp_audio_enc_out_frame_t output_buffer = {
+      .buffer = (uint8_t *)malloc(OPUS_OUT_BUFFER_SIZE),
+      .len = OPUS_OUT_BUFFER_SIZE,
+  };
+
+  while (1) {
+    if (peer_connection_get_state(subscriber_peer_connection) ==
+        PEER_CONNECTION_COMPLETED) {
+      break;
+    }
+    vTaskDelay(pdMS_TO_TICKS(100));
+  }
+
+  while (1) {
+    i2s_read(I2S_NUM_1, input_buffer.buffer, input_buffer.len, &bytes_read,
+             portMAX_DELAY);
+
+    if (bytes_read > 0) {
+      if (esp_audio_enc_process(enc_handle, &input_buffer, &output_buffer) ==
+          ESP_AUDIO_ERR_OK) {
+        peer_connection_send_audio(publisher_peer_connection,
+                                   output_buffer.buffer,
+                                   output_buffer.encoded_bytes);
+      }
+    }
+    vTaskDelay(pdMS_TO_TICKS(5));
+  }
+#endif
 }
 
 PeerConnection *lk_create_peer_connection(int isPublisher) {

@@ -1,8 +1,5 @@
 #include <driver/i2s.h>
-#include <esp_audio_enc.h>
-#include <esp_audio_enc_default.h>
-#include <esp_audio_enc_reg.h>
-#include <esp_opus_enc.h>
+#include <opus.h>
 
 #include "main.h"
 
@@ -74,6 +71,29 @@ void lk_init_audio_capture() {
     printf("Failed to set I2S pins for audio input");
     return;
   }
+}
 
-  esp_audio_enc_register_default();
+opus_int16 *output_buffer = NULL;
+OpusDecoder *opus_decoder = NULL;
+
+void lk_init_audio_decoder() {
+  int decoder_error = 0;
+  opus_decoder = opus_decoder_create(SAMPLE_RATE, 2, &decoder_error);
+  if (decoder_error != OPUS_OK) {
+    printf("Failed to create OPUS decoder");
+    return;
+  }
+
+  output_buffer = (opus_int16 *)malloc(BUFFER_SAMPLES * sizeof(opus_int16));
+}
+
+void lk_audio_decode(uint8_t *data, size_t size) {
+  int decoded_size =
+      opus_decode(opus_decoder, data, size, output_buffer, BUFFER_SAMPLES, 0);
+
+  if (decoded_size > 0) {
+    size_t bytes_written = 0;
+    i2s_write(I2S_NUM_0, output_buffer, decoded_size, &bytes_written,
+              portMAX_DELAY);
+  }
 }

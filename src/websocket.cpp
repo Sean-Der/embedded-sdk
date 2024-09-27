@@ -249,7 +249,7 @@ void lk_websocket(void) {
       20000 * sizeof(StackType_t), MALLOC_CAP_SPIRAM);
 
   xTaskCreatePinnedToCore(lk_subscriber_peer_connection_task, "lk_subscriber",
-                          8192, NULL, 5, &peer_connection_task_handle, 1);
+                          16384, NULL, 5, &peer_connection_task_handle, 1);
 #endif
 
   while (true) {

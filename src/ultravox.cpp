@@ -96,34 +96,32 @@ static std::string http_post(const char *path, const char *request_json,
   return std::string(data->data(), data->read);
 }
 
-static CallResponse create_call(const CallRequest &request,
-                                const char *api_key) {
-  // format request to json
-  cJSON *request_json = cJSON_CreateObject();
+static std::string create_call(const CallRequest &request,
+                               const char *api_key) {
+  auto request_json = cJSON_CreateObject();
   cJSON_AddStringToObject(request_json, "systemPrompt",
                           request.system_prompt.c_str());
   // cJSON_AddStringToObject(request_json, "maxDuration", "00:00:30");
-  char *request_str = cJSON_Print(request_json);
+  auto request_str = cJSON_Print(request_json);
   std::string response_str = http_post("/calls", request_str, api_key);
   free(request_str);
 
   ESP_LOGI(LOG_TAG, "Response: %s", response_str.c_str());
-  cJSON *response_json = cJSON_Parse(response_str.c_str());
+  auto response_json = cJSON_Parse(response_str.c_str());
   if (response_json == NULL) {
     ESP_LOGE(LOG_TAG, "Failed to parse JSON response");
-    return CallResponse();
+    return "";
   }
 
-  cJSON *join_url = cJSON_GetObjectItem(response_json, "joinUrl");
+  auto join_url = cJSON_GetObjectItem(response_json, "joinUrl");
   if (join_url == NULL || !cJSON_IsString(join_url)) {
     ESP_LOGE(LOG_TAG, "Bad JSON response");
-    return CallResponse();
+    return "";
   }
 
-  CallResponse response;
-  response.join_url = join_url->valuestring;
+  std::string join_url_str = join_url->valuestring;
   cJSON_Delete(response_json);
-  return response;
+  return join_url_str;
 }
 
 static void uv_handle_websocket_data(const char *data, size_t len) {
@@ -153,9 +151,6 @@ static void uv_handle_websocket_data(const char *data, size_t len) {
   }
 
   lk_websocket(room_url->valuestring, token->valuestring);
-
-  cJSON_Delete(room_url);
-  cJSON_Delete(token);
   cJSON_Delete(room_info);
 }
 
@@ -185,12 +180,12 @@ static void uv_websocket_event_handler(void *handler_args,
 }
 
 void uv_run(const CallRequest &callRequest, const char *apiKey) {
-  CallResponse call_response = create_call(callRequest, apiKey);
-  ESP_LOGI(LOG_TAG, "Call response: %s", call_response.join_url.c_str());
+  auto join_url = create_call(callRequest, apiKey);
+  ESP_LOGI(LOG_TAG, "Call response: %s", join_url.c_str());
 
   esp_websocket_client_config_t ws_cfg;
   memset(&ws_cfg, 0, sizeof(ws_cfg));
-  ws_cfg.uri = call_response.join_url.c_str();
+  ws_cfg.uri = join_url.c_str();
   ws_cfg.buffer_size = MTU_SIZE;
   ws_cfg.disable_pingpong_discon = true;
   ws_cfg.reconnect_timeout_ms = 1000;

@@ -93,7 +93,7 @@ void process_signaling_values(PeerConnection *peer_connection,
   }
 }
 
-void *peer_connection_task(void *user_data) {
+void *lk_peer_connection_task(void *user_data) {
   while (1) {
     if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
       if (publisher_status == 2) {
@@ -126,7 +126,8 @@ PeerConnection *lk_create_peer_connection(int isPublisher) {
       .ice_servers = {},
       .audio_codec = CODEC_OPUS,
       .video_codec = CODEC_NONE,
-      .datachannel = DATA_CHANNEL_NONE,
+      .datachannel = DATA_CHANNEL_STRING,
+      //.datachannel = DATA_CHANNEL_NONE,
       .onaudiotrack = [](uint8_t *data, size_t size, void *userdata) -> void {},
       .onvideotrack = NULL,
       .on_request_keyframe = NULL,

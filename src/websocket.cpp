@@ -126,6 +126,9 @@ void lk_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
       break;
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_LEAVE:
       ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_LEAVE\n");
+#ifndef LINUX_BUILD
+      esp_restart();
+#endif
       break;
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_MUTE:
       ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_MUTE\n");
@@ -151,6 +154,9 @@ static void lk_websocket_event_handler(void *handler_args,
       break;
     case WEBSOCKET_EVENT_DISCONNECTED:
       ESP_LOGI(LOG_TAG, "WEBSOCKET_EVENT_DISCONNECTED");
+#ifndef LINUX_BUILD
+      esp_restart();
+#endif
       break;
     case WEBSOCKET_EVENT_DATA: {
       if (data->op_code == 0x08 && data->data_len == 2) {
@@ -175,6 +181,9 @@ static void lk_websocket_event_handler(void *handler_args,
     }
     case WEBSOCKET_EVENT_ERROR:
       ESP_LOGI(LOG_TAG, "WEBSOCKET_EVENT_ERROR");
+#ifndef LINUX_BUILD
+      esp_restart();
+#endif
       break;
   }
 }
@@ -245,7 +254,7 @@ void lk_websocket(void) {
 
   while (true) {
     if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
-      if (publisher_status == 1) {
+      if (publisher_status == 1 && SEND_AUDIO) {
         Livekit__SignalRequest r = LIVEKIT__SIGNAL_REQUEST__INIT;
         Livekit__AddTrackRequest a = LIVEKIT__ADD_TRACK_REQUEST__INIT;
 

@@ -41,6 +41,12 @@ static void lk_publisher_onconnectionstatechange_task(PeerConnectionState state,
                                                       void *user_data) {
   ESP_LOGI(LOG_TAG, "Publisher PeerConnectionState: %s",
            peer_connection_state_to_string(state));
+  if (state == PEER_CONNECTION_DISCONNECTED ||
+      state == PEER_CONNECTION_CLOSED) {
+#ifndef LINUX_BUILD
+    esp_restart();
+#endif
+  }
 }
 
 static void lk_subscriber_onconnectionstatechange_task(
@@ -51,6 +57,11 @@ static void lk_subscriber_onconnectionstatechange_task(
   // Subscriber has connected, start connecting publisher
   if (state == PEER_CONNECTION_COMPLETED) {
     publisher_status = 1;
+  } else if (state == PEER_CONNECTION_DISCONNECTED ||
+             state == PEER_CONNECTION_CLOSED) {
+#ifndef LINUX_BUILD
+    esp_restart();
+#endif
   }
 }
 
@@ -191,8 +202,10 @@ PeerConnection *lk_create_peer_connection(int isPublisher) {
       .ice_servers = {},
       .audio_codec = CODEC_OPUS,
       .video_codec = CODEC_NONE,
-      .datachannel = DATA_CHANNEL_NONE,
-      .onaudiotrack = [](uint8_t *data, size_t size, void *userdata) -> void {},
+      .datachannel = isPublisher ? DATA_CHANNEL_NONE : DATA_CHANNEL_STRING,
+      .onaudiotrack = [](uint8_t *data, size_t size, void *userdata) -> void {
+
+      },
       .onvideotrack = NULL,
       .on_request_keyframe = NULL,
       .user_data = NULL,

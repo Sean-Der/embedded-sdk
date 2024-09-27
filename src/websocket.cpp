@@ -224,11 +224,11 @@ void lk_websocket(void) {
   publisher_peer_connection = lk_create_peer_connection(/* isPublisher */ 1);
 
 #ifdef LINUX_BUILD
-  pthread_t peer_connection_thread_handle;
+  pthread_t subscriber_peer_connection_thread_handle;
   pthread_create(
-      &peer_connection_thread_handle, NULL,
+      &subscriber_peer_connection_thread_handle, NULL,
       [](void *) -> void * {
-        lk_peer_connection_task(NULL);
+        lk_subscriber_peer_connection_task(NULL);
         pthread_exit(NULL);
         return NULL;
       },
@@ -259,7 +259,17 @@ void lk_websocket(void) {
         lk_pack_and_send_signal_request(&r, client);
         publisher_status = 0;
 
-#ifndef LINUX_BUILD
+#ifdef LINUX_BUILD
+        pthread_t publisher_peer_connection_thread_handle;
+        pthread_create(
+            &publisher_peer_connection_thread_handle, NULL,
+            [](void *) -> void * {
+              lk_publisher_peer_connection_task(NULL);
+              pthread_exit(NULL);
+              return NULL;
+            },
+            NULL);
+#else
         if (stack_memory) {
           xTaskCreateStaticPinnedToCore(lk_publisher_peer_connection_task,
                                         "lk_publisher", 20000, NULL, 7,

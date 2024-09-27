@@ -22,6 +22,7 @@ int main(void) {
   ESP_LOGI(LOG_TAG, "Starting app with api key: %s", UVAPI_API_KEY);
   ESP_ERROR_CHECK(esp_event_loop_create_default());
   peer_init();
+  lk_init_audio_capture();
   app_wifi();
   CallRequest request;
   request.system_prompt = SANTA_SYSTEM_PROMPT;

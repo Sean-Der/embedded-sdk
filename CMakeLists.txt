@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.19)
 
+# Audio Sending is implemented, but not performant enough yet
+add_compile_definitions(SEND_AUDIO=0)
 
 if(NOT IDF_TARGET STREQUAL linux)
   if(NOT DEFINED ENV{WIFI_SSID} OR NOT DEFINED ENV{WIFI_PASSWORD})

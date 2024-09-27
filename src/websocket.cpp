@@ -176,6 +176,9 @@ void lk_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
 
       break;
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_LEAVE:
+#ifndef LINUX_BUILD
+      // esp_restart();  //????
+#endif
       break;
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_MUTE:
       break;
@@ -198,6 +201,9 @@ static void lk_websocket_event_handler(void *handler_args,
       break;
     case WEBSOCKET_EVENT_DISCONNECTED:
       ESP_LOGI(LOG_TAG, "WEBSOCKET_EVENT_DISCONNECTED");
+#ifndef LINUX_BUILD
+      esp_restart();
+#endif
       break;
     case WEBSOCKET_EVENT_DATA: {
       if (data->op_code == 0x08 && data->data_len == 2) {
@@ -222,6 +228,9 @@ static void lk_websocket_event_handler(void *handler_args,
     }
     case WEBSOCKET_EVENT_ERROR:
       ESP_LOGI(LOG_TAG, "WEBSOCKET_EVENT_ERROR");
+#ifndef LINUX_BUILD
+      esp_restart();
+#endif
       break;
   }
 }
@@ -271,13 +280,32 @@ void lk_websocket(const char *room_url, const char *token) {
                                 lk_websocket_event_handler, (void *)client);
   esp_websocket_client_start(client);
 
-  pthread_t peer_connection_thread_handle;
-  pthread_create(&peer_connection_thread_handle, NULL, lk_peer_connection_task,
-                 NULL);
+  subscriber_peer_connection = lk_create_peer_connection(/* isPublisher */ 0);
+  publisher_peer_connection = lk_create_peer_connection(/* isPublisher */ 1);
+
+#ifdef LINUX_BUILD
+  pthread_t subscriber_peer_connection_thread_handle;
+  pthread_create(
+      &subscriber_peer_connection_thread_handle, NULL,
+      [](void *) -> void * {
+        lk_subscriber_peer_connection_task(NULL);
+        pthread_exit(NULL);
+        return NULL;
+      },
+      NULL);
+#else
+  TaskHandle_t peer_connection_task_handle = NULL;
+  StaticTask_t task_buffer;
+  StackType_t *stack_memory = (StackType_t *)heap_caps_malloc(
+      20000 * sizeof(StackType_t), MALLOC_CAP_SPIRAM);
+
+  xTaskCreatePinnedToCore(lk_subscriber_peer_connection_task, "lk_subscriber",
+                          8192, NULL, 5, &peer_connection_task_handle, 1);
+#endif
 
   while (true) {
     if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
-      if (publisher_status == 1) {
+      if (publisher_status == 1 && SEND_AUDIO) {
         Livekit__SignalRequest r = LIVEKIT__SIGNAL_REQUEST__INIT;
         Livekit__AddTrackRequest a = LIVEKIT__ADD_TRACK_REQUEST__INIT;
 
@@ -290,6 +318,25 @@ void lk_websocket(const char *room_url, const char *token) {
 
         lk_pack_and_send_signal_request(&r, client);
         publisher_status = 0;
+
+#ifdef LINUX_BUILD
+        pthread_t publisher_peer_connection_thread_handle;
+        pthread_create(
+            &publisher_peer_connection_thread_handle, NULL,
+            [](void *) -> void * {
+              lk_publisher_peer_connection_task(NULL);
+              pthread_exit(NULL);
+              return NULL;
+            },
+            NULL);
+#else
+        if (stack_memory) {
+          xTaskCreateStaticPinnedToCore(lk_publisher_peer_connection_task,
+                                        "lk_publisher", 20000, NULL, 7,
+                                        stack_memory, &task_buffer, 0);
+        }
+#endif
+
       } else if (publisher_status == 3) {
         Livekit__SignalRequest r = LIVEKIT__SIGNAL_REQUEST__INIT;
         Livekit__SessionDescription s = LIVEKIT__SESSION_DESCRIPTION__INIT;

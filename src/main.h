@@ -2,6 +2,7 @@
 
 #define LOG_TAG "embedded-sdk"
 #define BUFFER_SAMPLES 320
+#define SAMPLE_RATE 8000
 
 PeerConnection *lk_create_peer_connection(int isPublisher);
 void lk_websocket(void);

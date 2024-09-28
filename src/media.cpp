@@ -3,8 +3,6 @@
 
 #include "main.h"
 
-#define SAMPLE_RATE 8000
-
 #define MCLK_PIN 0
 #define DAC_BCLK_PIN 15
 #define DAC_LRCLK_PIN 16

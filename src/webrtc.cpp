@@ -1,5 +1,6 @@
 #ifndef LINUX_BUILD
 #include <driver/i2s.h>
+#include <opus.h>
 #endif
 
 #include <esp_event.h>
@@ -126,6 +127,30 @@ void lk_subscriber_peer_connection_task(void *user_data) {
 }
 
 void lk_publisher_peer_connection_task(void *user_data) {
+#ifndef LINUX_BUILD
+  int tick_count = 0, encoder_error = 0;
+  size_t bytes_read = 0;
+  opus_int16 input_buffer[BUFFER_SAMPLES / sizeof(opus_int16)];
+  auto encoded_frame = (uint8_t *)malloc(OPUS_OUT_BUFFER_SIZE);
+  auto opus_encoder = opus_encoder_create(SAMPLE_RATE, 1, OPUS_APPLICATION_VOIP,
+                                          &encoder_error);
+
+  if (encoder_error != OPUS_OK) {
+    printf("Failed to create OPUS encoder");
+    return;
+  }
+
+  if (opus_encoder_init(opus_encoder, SAMPLE_RATE, 1, OPUS_APPLICATION_VOIP) !=
+      OPUS_OK) {
+    printf("Failed to initialize OPUS encoder");
+    return;
+  }
+
+  opus_encoder_ctl(opus_encoder, OPUS_SET_BITRATE(30000));
+  opus_encoder_ctl(opus_encoder, OPUS_SET_COMPLEXITY(0));
+  opus_encoder_ctl(opus_encoder, OPUS_SET_SIGNAL(OPUS_SIGNAL_VOICE));
+#endif
+
   while (1) {
     if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
       if (publisher_status == 2) {
@@ -138,6 +163,26 @@ void lk_publisher_peer_connection_task(void *user_data) {
       }
       xSemaphoreGive(g_mutex);
     }
+
+#ifndef LINUX_BUILD
+    tick_count++;
+    if (tick_count >= 20 &&
+        peer_connection_get_state(publisher_peer_connection) ==
+            PEER_CONNECTION_COMPLETED) {
+      i2s_read(I2S_NUM_1, input_buffer, BUFFER_SAMPLES, &bytes_read,
+               portMAX_DELAY);
+
+      if (bytes_read > 0) {
+        auto encoded_size =
+            opus_encode(opus_encoder, input_buffer, bytes_read / 2,
+                        encoded_frame, OPUS_OUT_BUFFER_SIZE);
+
+        peer_connection_send_audio(publisher_peer_connection, encoded_frame,
+                                   encoded_size);
+      }
+      tick_count = 0;
+    }
+#endif
 
     peer_connection_loop(publisher_peer_connection);
     vTaskDelay(pdMS_TO_TICKS(1));

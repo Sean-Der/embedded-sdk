@@ -16,8 +16,8 @@
 
 #include "main.h"
 
-#define WEBSOCKET_URI_SIZE 400
-#define ANSWER_BUFFER_SIZE 1000
+#define WEBSOCKET_URI_SIZE 1024
+#define ANSWER_BUFFER_SIZE 1024
 #define MTU_SIZE 1500
 #define LIVEKIT_PROTOCOL_VERSION 3
 
@@ -46,14 +46,68 @@ extern char *subscriber_answer_ice_ufrag;
 extern PeerConnection *subscriber_peer_connection;
 extern PeerConnection *publisher_peer_connection;
 
+static const char *request_message_to_string(
+    Livekit__SignalRequest__MessageCase message_case) {
+  switch (message_case) {
+    case LIVEKIT__SIGNAL_REQUEST__MESSAGE_OFFER:
+      return "OFFER";
+    case LIVEKIT__SIGNAL_REQUEST__MESSAGE_ANSWER:
+      return "ANSWER";
+    case LIVEKIT__SIGNAL_REQUEST__MESSAGE_TRICKLE:
+      return "TRICKLE";
+    case LIVEKIT__SIGNAL_REQUEST__MESSAGE_ADD_TRACK:
+      return "ADD_TRACK";
+    case LIVEKIT__SIGNAL_REQUEST__MESSAGE_MUTE:
+      return "MUTE";
+    case LIVEKIT__SIGNAL_REQUEST__MESSAGE_SUBSCRIPTION:
+      return "SUBSCRIPTION";
+    case LIVEKIT__SIGNAL_REQUEST__MESSAGE_TRACK_SETTING:
+      return "TRACK_SETTING";
+    case LIVEKIT__SIGNAL_REQUEST__MESSAGE_LEAVE:
+      return "LEAVE";
+    default:
+      ESP_LOGI(LOG_TAG, "Unknown message type %d", message_case);
+      return "UNKNOWN";
+  }
+}
+
+static const char *response_message_to_string(
+    Livekit__SignalResponse__MessageCase message_case) {
+  switch (message_case) {
+    case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_JOIN:
+      return "JOIN";
+    case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_ANSWER:
+      return "ANSWER";
+    case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_OFFER:
+      return "OFFER";
+    case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRICKLE:
+      return "TRICKLE";
+    case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_UPDATE:
+      return "UPDATE";
+    case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRACK_PUBLISHED:
+      return "TRACK_PUBLISHED";
+    case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_LEAVE:
+      return "LEAVE";
+    case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_MUTE:
+      return "MUTE";
+    case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_SPEAKERS_CHANGED:
+      return "SPEAKERS_CHANGED";
+    case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_ROOM_UPDATE:
+      return "ROOM_UPDATE";
+    default:
+      ESP_LOGI(LOG_TAG, "Unknown message type %d", message_case);
+      return "UNKNOWN";
+  }
+}
+
 void lk_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
+  ESP_LOGI(LOG_TAG, "Recv %s",
+           response_message_to_string(packet->message_case));
   switch (packet->message_case) {
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRICKLE: {
-      ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRICKLE\n");
-
       // Skip TCP ICE Candidates
       if (strstr(packet->trickle->candidateinit, "tcp") != NULL) {
-        ESP_LOGD(LOG_TAG, "skipping tcp ice candidate");
+        ESP_LOGI(LOG_TAG, "skipping tcp ice candidate");
         return;
       }
 
@@ -66,10 +120,12 @@ void lk_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
       auto candidate_obj = cJSON_GetObjectItem(parsed, "candidate");
       if (!candidate_obj || !cJSON_IsString(candidate_obj)) {
         ESP_LOGI(LOG_TAG,
-                 "failed to parse ice_candidate_init has no candidate\n");
+                 "failed to parse ice_candidate_init has no candidate");
         return;
       }
 
+      ESP_LOGI(LOG_TAG, "Candidate: %d / %s", packet->trickle->target,
+               candidate_obj->valuestring);
       if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
         if (ice_candidate_buffer != NULL) {
           return;
@@ -83,7 +139,7 @@ void lk_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
       break;
     }
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_OFFER:
-      ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_OFFER\n");
+      ESP_LOGI(LOG_TAG, "%s", packet->offer->sdp);
 
       if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
         if (strstr(packet->offer->sdp, "m=audio")) {
@@ -97,15 +153,7 @@ void lk_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
       }
 
       break;
-    /* Logging/NoOp below */
-    case LIVEKIT__SIGNAL_RESPONSE__MESSAGE__NOT_SET:
-      ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE__NOT_SET\n");
-      break;
-    case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_JOIN:
-      ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_JOIN\n");
-      break;
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_ANSWER:
-      ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_ANSWER\n");
       if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
         publisher_signaling_buffer = strdup(packet->answer->sdp);
         publisher_status = 4;
@@ -113,11 +161,8 @@ void lk_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
       }
 
       break;
-    case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_UPDATE:
-      ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_UPDATE\n");
       break;
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRACK_PUBLISHED:
-      ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRACK_PUBLISHED\n");
       if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
         publisher_status = 2;
         xSemaphoreGive(g_mutex);
@@ -125,22 +170,19 @@ void lk_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
 
       break;
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_LEAVE:
-      ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_LEAVE\n");
 #ifndef LINUX_BUILD
       esp_restart();
 #endif
       break;
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_MUTE:
-      ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_MUTE\n");
-      break;
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_SPEAKERS_CHANGED:
-      ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_SPEAKERS_CHANGED\n");
-      break;
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_ROOM_UPDATE:
-      ESP_LOGI(LOG_TAG, "LIVEKIT__SIGNAL_RESPONSE__MESSAGE_ROOM_UPDATE\n");
+    case LIVEKIT__SIGNAL_RESPONSE__MESSAGE__NOT_SET:
+    case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_JOIN:
+    case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_UPDATE:
       break;
     default:
-      ESP_LOGI(LOG_TAG, "Unknown message type received.\n");
+      ESP_LOGI(LOG_TAG, "Unknown message type received.");
   }
 }
 
@@ -167,7 +209,7 @@ static void lk_websocket_event_handler(void *handler_args,
           NULL, data->data_len, (uint8_t *)data->data_ptr);
 
       if (new_response == NULL) {
-        ESP_LOGE(LOG_TAG, "Failed to decode SignalResponse message.\n");
+        ESP_LOGE(LOG_TAG, "Failed to decode SignalResponse message.");
 #ifndef LINUX_BUILD
         esp_restart();
 #endif
@@ -190,6 +232,7 @@ static void lk_websocket_event_handler(void *handler_args,
 
 void lk_pack_and_send_signal_request(const Livekit__SignalRequest *r,
                                      esp_websocket_client *client) {
+  ESP_LOGI(LOG_TAG, "Send %s", request_message_to_string(r->message_case));
   auto size = livekit__signal_request__get_packed_size(r);
   auto *buffer = (uint8_t *)malloc(size);
   livekit__signal_request__pack(r, buffer);
@@ -197,7 +240,7 @@ void lk_pack_and_send_signal_request(const Livekit__SignalRequest *r,
                                            portMAX_DELAY);
   free(buffer);
   if (len == -1) {
-    ESP_LOGI(LOG_TAG, "Failed to send answer");
+    ESP_LOGI(LOG_TAG, "Failed to send message.");
   }
 }
 

@@ -74,6 +74,8 @@ static const char *request_message_to_string(
 static const char *response_message_to_string(
     Livekit__SignalResponse__MessageCase message_case) {
   switch (message_case) {
+    case LIVEKIT__SIGNAL_RESPONSE__MESSAGE__NOT_SET:
+      return "NOT_SET (Ping/Pong)";
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_JOIN:
       return "JOIN";
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_ANSWER:

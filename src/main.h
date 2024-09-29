@@ -5,7 +5,7 @@
 #define SAMPLE_RATE 8000
 
 PeerConnection *lk_create_peer_connection(int isPublisher);
-void lk_websocket(void);
+void lk_websocket(const char *url, const char *token);
 void lk_wifi(void);
 void lk_init_audio_capture(void);
 void lk_init_audio_decoder(void);

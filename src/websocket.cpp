@@ -201,19 +201,22 @@ void lk_pack_and_send_signal_request(const Livekit__SignalRequest *r,
   }
 }
 
-void lk_websocket(void) {
+void lk_websocket(const char *room_url, const char *token) {
   g_mutex = xSemaphoreCreateMutex();
   if (g_mutex == NULL) {
-    ESP_LOGE(LOG_TAG, "Failed to create mutex.\n");
+    ESP_LOGE(LOG_TAG, "Failed to create mutex.");
     return;
   }
 
+  subscriber_peer_connection = lk_create_peer_connection(/* isPublisher */ 0);
+  publisher_peer_connection = lk_create_peer_connection(/* isPublisher */ 1);
   char *answer_buffer = (char *)calloc(1, ANSWER_BUFFER_SIZE);
 
   char ws_uri[WEBSOCKET_URI_SIZE];
   snprintf(ws_uri, WEBSOCKET_URI_SIZE,
-           "%s/rtc?protocol=%d&access_token=%s&auto_subscribe=true",
-           LIVEKIT_URL, LIVEKIT_PROTOCOL_VERSION, LIVEKIT_TOKEN);
+           "%s/rtc?protocol=%d&access_token=%s&auto_subscribe=true", room_url,
+           LIVEKIT_PROTOCOL_VERSION, token);
+  ESP_LOGI(LOG_TAG, "WebSocket URI: %s", ws_uri);
 
   esp_websocket_client_config_t ws_cfg;
   memset(&ws_cfg, 0, sizeof(ws_cfg));
@@ -228,9 +231,6 @@ void lk_websocket(void) {
   esp_websocket_register_events(client, WEBSOCKET_EVENT_ANY,
                                 lk_websocket_event_handler, (void *)client);
   esp_websocket_client_start(client);
-
-  subscriber_peer_connection = lk_create_peer_connection(/* isPublisher */ 0);
-  publisher_peer_connection = lk_create_peer_connection(/* isPublisher */ 1);
 
 #ifdef LINUX_BUILD
   pthread_t subscriber_peer_connection_thread_handle;

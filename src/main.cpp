@@ -1,6 +1,7 @@
 #include "main.h"
 
 #include <esp_event.h>
+#include <esp_log.h>
 #include <peer.h>
 
 #ifndef LINUX_BUILD
@@ -20,12 +21,12 @@ extern "C" void app_main(void) {
   lk_init_audio_capture();
   lk_init_audio_decoder();
   lk_wifi();
-  lk_websocket();
+  lk_websocket(LIVEKIT_URL, LIVEKIT_TOKEN);
 }
 #else
 int main(void) {
   ESP_ERROR_CHECK(esp_event_loop_create_default());
   peer_init();
-  lk_websocket();
+  lk_websocket(LIVEKIT_URL, LIVEKIT_TOKEN);
 }
 #endif

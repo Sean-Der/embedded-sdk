@@ -66,7 +66,7 @@ static const char *request_message_to_string(
     case LIVEKIT__SIGNAL_REQUEST__MESSAGE_LEAVE:
       return "LEAVE";
     default:
-      ESP_LOGI(LOG_TAG, "Unknown message type %d", message_case);
+      ESP_LOGI(LOG_TAG, "Unknown request message type %d", message_case);
       return "UNKNOWN";
   }
 }
@@ -95,7 +95,7 @@ static const char *response_message_to_string(
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_ROOM_UPDATE:
       return "ROOM_UPDATE";
     default:
-      ESP_LOGI(LOG_TAG, "Unknown message type %d", message_case);
+      ESP_LOGI(LOG_TAG, "Unknown response message type %d", message_case);
       return "UNKNOWN";
   }
 }
@@ -160,7 +160,6 @@ void lk_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
         xSemaphoreGive(g_mutex);
       }
 
-      break;
       break;
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRACK_PUBLISHED:
       if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {

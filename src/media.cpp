@@ -91,7 +91,7 @@ void lk_audio_decode(uint8_t *data, size_t size) {
 
   if (decoded_size > 0) {
     size_t bytes_written = 0;
-    i2s_write(I2S_NUM_0, output_buffer, decoded_size, &bytes_written,
-              portMAX_DELAY);
+    i2s_write(I2S_NUM_0, output_buffer, BUFFER_SAMPLES * sizeof(opus_int16),
+              &bytes_written, portMAX_DELAY);
   }
 }

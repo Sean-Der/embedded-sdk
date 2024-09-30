@@ -9,6 +9,9 @@
 
 #include "main.h"
 
+#define SUBSCRIBER_TICK_INTERVAL 15
+#define PUBLISHER_TICK_INTERVAL 15
+
 // 20ms samples
 #define OPUS_OUT_BUFFER_SIZE 3840  // 1276 bytes is recommended by opus_encode
 extern SemaphoreHandle_t g_mutex;
@@ -86,14 +89,16 @@ static void lk_publisher_on_icecandidate_task(char *description,
 }
 
 // Given a Remote Description + ICE Candidate do a Set+Free on a PeerConnection
-void lk_process_signaling_values(PeerConnection *peer_connection,
-                                 char **ice_candidate,
-                                 char **remote_description) {
+int lk_process_signaling_values(PeerConnection *peer_connection,
+                                char **ice_candidate,
+                                char **remote_description) {
+  int amount_set = 0;
+
   // If PeerConnection hasn't gone to completed we need a ICECandidate and
   // RemoteDescription libpeer doesn't support Trickle ICE
   auto state = peer_connection_get_state(peer_connection);
   if (state != PEER_CONNECTION_COMPLETED && *ice_candidate == NULL) {
-    return;
+    return amount_set;
   }
 
   // Only call add_ice_candidate when not completed. Calling it on a connected
@@ -102,6 +107,7 @@ void lk_process_signaling_values(PeerConnection *peer_connection,
     peer_connection_add_ice_candidate(peer_connection, *ice_candidate);
     free(*ice_candidate);
     *ice_candidate = NULL;
+    amount_set++;
   }
 
   if (*remote_description != NULL) {
@@ -109,7 +115,10 @@ void lk_process_signaling_values(PeerConnection *peer_connection,
                                            *remote_description);
     free(*remote_description);
     *remote_description = NULL;
+    amount_set++;
   }
+
+  return amount_set;
 }
 
 void lk_subscriber_peer_connection_task(void *user_data) {
@@ -122,70 +131,37 @@ void lk_subscriber_peer_connection_task(void *user_data) {
     }
 
     peer_connection_loop(subscriber_peer_connection);
-    vTaskDelay(pdMS_TO_TICKS(1));
+    vTaskDelay(pdMS_TO_TICKS(SUBSCRIBER_TICK_INTERVAL));
   }
 }
 
 void lk_publisher_peer_connection_task(void *user_data) {
 #ifndef LINUX_BUILD
-  int tick_count = 0, encoder_error = 0;
-  size_t bytes_read = 0;
-  opus_int16 input_buffer[BUFFER_SAMPLES / sizeof(opus_int16)];
-  auto encoded_frame = (uint8_t *)malloc(OPUS_OUT_BUFFER_SIZE);
-  auto opus_encoder = opus_encoder_create(SAMPLE_RATE, 1, OPUS_APPLICATION_VOIP,
-                                          &encoder_error);
-
-  if (encoder_error != OPUS_OK) {
-    printf("Failed to create OPUS encoder");
-    return;
-  }
-
-  if (opus_encoder_init(opus_encoder, SAMPLE_RATE, 1, OPUS_APPLICATION_VOIP) !=
-      OPUS_OK) {
-    printf("Failed to initialize OPUS encoder");
-    return;
-  }
-
-  opus_encoder_ctl(opus_encoder, OPUS_SET_BITRATE(30000));
-  opus_encoder_ctl(opus_encoder, OPUS_SET_COMPLEXITY(0));
-  opus_encoder_ctl(opus_encoder, OPUS_SET_SIGNAL(OPUS_SIGNAL_VOICE));
+  lk_init_audio_encoder();
 #endif
 
   while (1) {
-    if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
+    auto state = peer_connection_get_state(publisher_peer_connection);
+    if (state != PEER_CONNECTION_COMPLETED &&
+        xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
       if (publisher_status == 2) {
         peer_connection_create_offer(publisher_peer_connection);
         publisher_status = 0;
-      } else if (publisher_status == 4) {
-        lk_process_signaling_values(publisher_peer_connection,
-                                    &ice_candidate_buffer,
-                                    &publisher_signaling_buffer);
+      } else if (publisher_status == 4 &&
+                 lk_process_signaling_values(
+                     publisher_peer_connection, &ice_candidate_buffer,
+                     &publisher_signaling_buffer) == 2) {
+        publisher_status = 0;
       }
       xSemaphoreGive(g_mutex);
     }
 
 #ifndef LINUX_BUILD
-    tick_count++;
-    if (tick_count >= 20 &&
-        peer_connection_get_state(publisher_peer_connection) ==
-            PEER_CONNECTION_COMPLETED) {
-      i2s_read(I2S_NUM_1, input_buffer, BUFFER_SAMPLES, &bytes_read,
-               portMAX_DELAY);
-
-      if (bytes_read > 0) {
-        auto encoded_size =
-            opus_encode(opus_encoder, input_buffer, bytes_read / 2,
-                        encoded_frame, OPUS_OUT_BUFFER_SIZE);
-
-        peer_connection_send_audio(publisher_peer_connection, encoded_frame,
-                                   encoded_size);
-      }
-      tick_count = 0;
-    }
+    lk_send_audio(publisher_peer_connection);
 #endif
 
     peer_connection_loop(publisher_peer_connection);
-    vTaskDelay(pdMS_TO_TICKS(1));
+    vTaskDelay(pdMS_TO_TICKS(PUBLISHER_TICK_INTERVAL));
   }
 }
 

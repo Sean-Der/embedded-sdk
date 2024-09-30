@@ -14,3 +14,5 @@ void lk_publisher_peer_connection_task(void *user_data);
 void lk_subscriber_peer_connection_task(void *user_data);
 void lk_audio_encoder_task(void *arg);
 void lk_audio_decode(uint8_t *data, size_t size);
+void lk_init_audio_encoder();
+void lk_send_audio(PeerConnection *peer_connection);

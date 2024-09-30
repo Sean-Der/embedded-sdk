@@ -17,6 +17,9 @@ else()
 		REQUIRES driver protobuf-c esp_wifi nvs_flash esp_websocket_client peer esp_psram esp-libopus)
 endif()
 
+idf_component_get_property(lib peer COMPONENT_LIB)
+target_compile_options(${lib} PRIVATE -Wno-error=restrict)
+
 idf_component_get_property(lib srtp COMPONENT_LIB)
 target_compile_options(${lib} PRIVATE -Wno-error=incompatible-pointer-types)
 

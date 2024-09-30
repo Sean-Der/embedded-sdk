@@ -37,6 +37,15 @@ char *publisher_signaling_buffer = NULL;
 PeerConnection *subscriber_peer_connection = NULL;
 PeerConnection *publisher_peer_connection = NULL;
 
+int get_publisher_status() {
+  return publisher_status;
+}
+
+void set_publisher_status(int status) {
+  ESP_LOGI(LOG_TAG, "Setting publisher status to %d", status);
+  publisher_status = status;
+}
+
 static void publisher_onconnectionstatechange_task(PeerConnectionState state,
                                                    void *user_data) {
   ESP_LOGI(LOG_TAG, "Publisher PeerConnectionState: %s",
@@ -56,7 +65,7 @@ static void subscriber_onconnectionstatechange_task(PeerConnectionState state,
 
   // Subscriber has connected, start connecting publisher
   if (state == PEER_CONNECTION_COMPLETED) {
-    publisher_status = 1;
+    set_publisher_status(1);
   } else if (state == PEER_CONNECTION_DISCONNECTED ||
              state == PEER_CONNECTION_CLOSED) {
 #ifndef LINUX_BUILD
@@ -66,9 +75,10 @@ static void subscriber_onconnectionstatechange_task(PeerConnectionState state,
 }
 
 // subscriber_on_icecandidate_task holds lock because peer_connection_task is
-// what causes it to be fired
+// what causes it to be fired - NOT
 static void subscriber_on_icecandidate_task(char *description,
                                             void *user_data) {
+  assert(xSemaphoreTake(g_mutex, 0) == pdFALSE);
   auto fingerprint = strstr(description, "a=fingerprint");
   subscriber_answer_fingerprint =
       strndup(fingerprint, (int)(strchr(fingerprint, '\r') - fingerprint));
@@ -80,11 +90,17 @@ static void subscriber_on_icecandidate_task(char *description,
   auto icePwd = strstr(description, "a=ice-pwd");
   subscriber_answer_ice_pwd =
       strndup(icePwd, (int)(strchr(icePwd, '\r') - icePwd));
+  xSemaphoreGive(g_mutex);
 }
 
 static void publisher_on_icecandidate_task(char *description, void *user_data) {
-  publisher_signaling_buffer = strdup(description);
-  publisher_status = 3;
+  // mutex should be held here already - NOT
+  // assert(xSemaphoreTake(g_mutex, 0) == pdFALSE);
+  if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
+    publisher_signaling_buffer = strdup(description);
+    set_publisher_status(3);
+    xSemaphoreGive(g_mutex);
+  }
 }
 
 // Given a Remote Description + ICE Candidate do a Set+Free on a PeerConnection
@@ -115,33 +131,38 @@ void process_signaling_values(PeerConnection *peer_connection,
 
 void lk_subscriber_peer_connection_task(void *user_data) {
   while (1) {
+    ESP_LOGI(LOG_TAG, "Subscriber getting mutex");
     if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
-      lk_process_signaling_values(subscriber_peer_connection,
-                                  &ice_candidate_buffer,
-                                  &subscriber_offer_buffer);
+      ESP_LOGI(LOG_TAG, "Subscriber got mutex");
+      process_signaling_values(subscriber_peer_connection,
+                               &ice_candidate_buffer, &subscriber_offer_buffer);
       xSemaphoreGive(g_mutex);
     }
-
+    ESP_LOGI(LOG_TAG, "Subscriber released mutex, about to loop");
     peer_connection_loop(subscriber_peer_connection);
+    ESP_LOGI(LOG_TAG, "Subscriber loop done");
     vTaskDelay(pdMS_TO_TICKS(1));
   }
 }
 
 void lk_publisher_peer_connection_task(void *user_data) {
   while (1) {
+    ESP_LOGI(LOG_TAG, "Publisher getting mutex");
     if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
-      if (publisher_status == 2) {
+      ESP_LOGI(LOG_TAG, "Publisher got mutex");
+      if (get_publisher_status() == 2) {
         peer_connection_create_offer(publisher_peer_connection);
-        publisher_status = 0;
-      } else if (publisher_status == 4) {
+        set_publisher_status(0);
+      } else if (get_publisher_status() == 4) {
         process_signaling_values(publisher_peer_connection,
                                  &ice_candidate_buffer,
                                  &publisher_signaling_buffer);
       }
       xSemaphoreGive(g_mutex);
     }
-
+    ESP_LOGI(LOG_TAG, "Publisher released mutex, about to loop");
     peer_connection_loop(publisher_peer_connection);
+    ESP_LOGI(LOG_TAG, "Publisher loop done");
     vTaskDelay(pdMS_TO_TICKS(1));
   }
 
@@ -231,7 +252,7 @@ PeerConnection *lk_create_peer_connection(int isPublisher) {
   return peer_connection;
 }
 
-static const char *sdp_no_audio =
+static const char sdp_no_audio[] =
     "v=0\r\n"
     "o=- 8611954123959290783 2 IN IP4 127.0.0.1\r\n"
     "s=-\r\n"
@@ -247,7 +268,7 @@ static const char *sdp_no_audio =
     "%s\r\n"  // a=fingeprint
     "a=sctp-port:5000\r\n";
 
-static const char *sdp_audio =
+static const char sdp_audio[] =
     "v=0\r\n"
     "o=- 8611954123959290783 2 IN IP4 127.0.0.1\r\n"
     "s=-\r\n"
@@ -273,14 +294,18 @@ static const char *sdp_audio =
     "%s\r\n"  // a=fingeprint
     "a=recvonly\r\n";
 
-void lk_populate_answer(char *answer, int include_audio) {
+void lk_populate_answer(char *answer, size_t answer_size, int include_audio) {
+  size_t ret = 0;
   if (include_audio) {
-    sprintf(answer, sdp_audio, subscriber_answer_ice_ufrag,
-            subscriber_answer_ice_pwd, subscriber_answer_fingerprint,
-            subscriber_answer_ice_ufrag, subscriber_answer_ice_pwd,
-            subscriber_answer_fingerprint);
+    ret = snprintf(answer, answer_size, sdp_audio, subscriber_answer_ice_ufrag,
+                   subscriber_answer_ice_pwd, subscriber_answer_fingerprint,
+                   subscriber_answer_ice_ufrag, subscriber_answer_ice_pwd,
+                   subscriber_answer_fingerprint);
   } else {
-    sprintf(answer, sdp_no_audio, subscriber_answer_ice_ufrag,
-            subscriber_answer_ice_pwd, subscriber_answer_fingerprint);
+    ret =
+        snprintf(answer, answer_size, sdp_no_audio, subscriber_answer_ice_ufrag,
+                 subscriber_answer_ice_pwd, subscriber_answer_fingerprint);
   }
+
+  assert(ret < answer_size);
 }

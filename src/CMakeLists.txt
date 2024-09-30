@@ -15,7 +15,7 @@ else()
 	idf_component_register(
 		SRCS ${COMMON_SRC} "wifi.cpp" "media.cpp"
 	  INCLUDE_DIRS "." "../deps/livekit-protocol-generated"
-		REQUIRES driver protobuf-c esp_wifi nvs_flash esp_websocket_client peer esp_psram espressif__esp_audio_codec)
+		REQUIRES driver protobuf-c esp_wifi nvs_flash esp_http_client esp_websocket_client peer esp_psram espressif__esp_audio_codec)
 endif()
 
 idf_component_get_property(lib srtp COMPONENT_LIB)

@@ -14,7 +14,11 @@ void lk_init_audio_capture(void);
 void uv_run(const CallRequest &request, const char *api_key);
 PeerConnection *lk_create_peer_connection(int isPublisher);
 void lk_websocket(const char *url, const char *token);
-void lk_populate_answer(char *answer, int include_audio);
+void lk_populate_answer(char *answer, size_t answer_size, int include_audio);
 void lk_publisher_peer_connection_task(void *user_data);
 void lk_subscriber_peer_connection_task(void *user_data);
 void lk_audio_encoder_task(void *arg);
+
+void *spiram_malloc(size_t size);
+void *spiram_calloc(size_t num, size_t size);
+void spiram_free(void *ptr);

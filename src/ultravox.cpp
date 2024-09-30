@@ -42,8 +42,17 @@ static esp_err_t http_event_handler(esp_http_client_event_t *event) {
     case HTTP_EVENT_ERROR:
       ESP_LOGE(LOG_TAG, "HTTP_EVENT_ERROR");
       break;
+    case HTTP_EVENT_ON_CONNECTED:
+      ESP_LOGI(LOG_TAG, "HTTP_EVENT_ON_CONNECTED");
+      break;
+    case HTTP_EVENT_HEADER_SENT:
+      ESP_LOGD(LOG_TAG, "HTTP_EVENT_HEADER_SENT");
+      break;
+    case HTTP_EVENT_ON_HEADER:
+      ESP_LOGD(LOG_TAG, "HTTP_EVENT_ON_HEADER");
+      break;
     case HTTP_EVENT_ON_DATA:
-      ESP_LOGI(LOG_TAG, "HTTP_EVENT_ON_DATA, len=%d", event->data_len);
+      ESP_LOGD(LOG_TAG, "HTTP_EVENT_ON_DATA, len=%d", event->data_len);
       {
         auto *data = static_cast<HttpResponseData *>(event->user_data);
         if (data->buffer == nullptr) {
@@ -58,6 +67,12 @@ static esp_err_t http_event_handler(esp_http_client_event_t *event) {
           data->read += copy_len;
         }
       }
+      break;
+    case HTTP_EVENT_ON_FINISH:
+      ESP_LOGI(LOG_TAG, "HTTP_EVENT_ON_FINISH");
+      break;
+    case HTTP_EVENT_DISCONNECTED:
+      ESP_LOGI(LOG_TAG, "HTTP_EVENT_DISCONNECTED");
       break;
     default:
       ESP_LOGI(LOG_TAG, "HTTP_EVENT %d", event->event_id);
@@ -140,8 +155,8 @@ static void uv_handle_websocket_data(const char *data, size_t len) {
   auto token = cJSON_GetObjectItem(room_info, "token");
   if (room_url != NULL && cJSON_IsString(room_url) && token != NULL &&
       cJSON_IsString(token)) {
-    ESP_LOGI(LOG_TAG, "Room url: %s", room_url->valuestring);
-    ESP_LOGI(LOG_TAG, "Token: %s", token->valuestring);
+    ESP_LOGD(LOG_TAG, "Room url: %s", room_url->valuestring);
+    ESP_LOGD(LOG_TAG, "Token: %s", token->valuestring);
   } else {
     ESP_LOGE(LOG_TAG, "Invalid room_info JSON.");
 #ifndef LINUX_BUILD

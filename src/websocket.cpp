@@ -18,7 +18,7 @@
 
 #define WEBSOCKET_URI_SIZE 1024
 #define ANSWER_BUFFER_SIZE 1024
-#define MTU_SIZE 1500
+#define WEBSOCKET_BUFFER_SIZE 2048
 #define LIVEKIT_PROTOCOL_VERSION 3
 
 static const char *SDP_TYPE_ANSWER = "answer";
@@ -33,7 +33,8 @@ SemaphoreHandle_t g_mutex;
 // * 2 - Send an answer with audio enabled
 int subscriber_status = 0;
 
-extern int publisher_status;
+extern int get_publisher_status();
+extern void set_publisher_status(int status);
 extern char *publisher_signaling_buffer;
 
 // Offer + ICE Candidates. Captured in signaling thread
@@ -128,10 +129,11 @@ void lk_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
                candidate_obj->valuestring);
       if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
         if (ice_candidate_buffer != NULL) {
-          return;
+          ESP_LOGI(LOG_TAG, "ice_candidate_buffer is not NULL");
+        } else {
+          ESP_LOGI(LOG_TAG, "buffering ICE candidate");
+          ice_candidate_buffer = strdup(candidate_obj->valuestring);
         }
-
-        ice_candidate_buffer = strdup(candidate_obj->valuestring);
         xSemaphoreGive(g_mutex);
       }
 
@@ -161,19 +163,17 @@ void lk_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_ANSWER:
       if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
         publisher_signaling_buffer = strdup(packet->answer->sdp);
-        publisher_status = 4;
+        set_publisher_status(4);
         xSemaphoreGive(g_mutex);
       }
-
       break;
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_UPDATE:
       break;
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRACK_PUBLISHED:
       if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
-        publisher_status = 2;
+        set_publisher_status(2);
         xSemaphoreGive(g_mutex);
       }
-
       break;
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_LEAVE:
 #ifndef LINUX_BUILD
@@ -206,7 +206,9 @@ static void lk_websocket_event_handler(void *handler_args,
 #endif
       break;
     case WEBSOCKET_EVENT_DATA: {
-      if (data->op_code == 0x08 && data->data_len == 2) {
+      if (data->op_code != 0x2) {
+        ESP_LOGD(LOG_TAG, "Message, opcode=%d, len=%d", data->op_code,
+                 data->data_len);
         return;
       }
 
@@ -258,9 +260,9 @@ void lk_websocket(const char *room_url, const char *token) {
 
   subscriber_peer_connection = lk_create_peer_connection(/* isPublisher */ 0);
   publisher_peer_connection = lk_create_peer_connection(/* isPublisher */ 1);
-  char *answer_buffer = (char *)calloc(1, ANSWER_BUFFER_SIZE);
+  char *answer_buffer = (char *)malloc(ANSWER_BUFFER_SIZE);
 
-  char ws_uri[WEBSOCKET_URI_SIZE];
+  char *ws_uri = (char *)malloc(WEBSOCKET_URI_SIZE);
   snprintf(ws_uri, WEBSOCKET_URI_SIZE,
            "%s/rtc?protocol=%d&access_token=%s&auto_subscribe=true", room_url,
            LIVEKIT_PROTOCOL_VERSION, token);
@@ -268,9 +270,8 @@ void lk_websocket(const char *room_url, const char *token) {
 
   esp_websocket_client_config_t ws_cfg;
   memset(&ws_cfg, 0, sizeof(ws_cfg));
-
   ws_cfg.uri = ws_uri;
-  ws_cfg.buffer_size = MTU_SIZE;
+  ws_cfg.buffer_size = WEBSOCKET_BUFFER_SIZE;
   ws_cfg.disable_pingpong_discon = true;
   ws_cfg.reconnect_timeout_ms = 1000;
   ws_cfg.network_timeout_ms = 1000;
@@ -279,6 +280,7 @@ void lk_websocket(const char *room_url, const char *token) {
   esp_websocket_register_events(client, WEBSOCKET_EVENT_ANY,
                                 lk_websocket_event_handler, (void *)client);
   esp_websocket_client_start(client);
+  free(ws_uri);
 
   subscriber_peer_connection = lk_create_peer_connection(/* isPublisher */ 0);
   publisher_peer_connection = lk_create_peer_connection(/* isPublisher */ 1);
@@ -294,18 +296,20 @@ void lk_websocket(const char *room_url, const char *token) {
       },
       NULL);
 #else
-  TaskHandle_t peer_connection_task_handle = NULL;
-  StaticTask_t task_buffer;
-  StackType_t *stack_memory = (StackType_t *)heap_caps_malloc(
-      20000 * sizeof(StackType_t), MALLOC_CAP_SPIRAM);
-
-  xTaskCreatePinnedToCore(lk_subscriber_peer_connection_task, "lk_subscriber",
-                          8192, NULL, 5, &peer_connection_task_handle, 1);
+  TaskHandle_t publisher_pc_task_handle = NULL;
+  TaskHandle_t subscriber_pc_task_handle = NULL;
+  BaseType_t ret = xTaskCreatePinnedToCore(lk_subscriber_peer_connection_task,
+                                           "lk_subscriber", 8192, NULL, 5,
+                                           &subscriber_pc_task_handle, 1);
+  assert(ret == pdPASS);
 #endif
 
   while (true) {
+    ESP_LOGI(LOG_TAG, "Websocket getting mutex");
     if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
-      if (publisher_status == 1 && SEND_AUDIO) {
+      ESP_LOGI(LOG_TAG, "Websocket got mutex");
+      if (get_publisher_status() == 1 && SEND_AUDIO) {
+        ESP_LOGI(LOG_TAG, "Sending add track request and starting publisher");
         Livekit__SignalRequest r = LIVEKIT__SIGNAL_REQUEST__INIT;
         Livekit__AddTrackRequest a = LIVEKIT__ADD_TRACK_REQUEST__INIT;
 
@@ -317,8 +321,7 @@ void lk_websocket(const char *room_url, const char *token) {
         r.message_case = LIVEKIT__SIGNAL_REQUEST__MESSAGE_ADD_TRACK;
 
         lk_pack_and_send_signal_request(&r, client);
-        publisher_status = 0;
-
+        set_publisher_status(0);
 #ifdef LINUX_BUILD
         pthread_t publisher_peer_connection_thread_handle;
         pthread_create(
@@ -330,14 +333,18 @@ void lk_websocket(const char *room_url, const char *token) {
             },
             NULL);
 #else
-        if (stack_memory) {
-          xTaskCreateStaticPinnedToCore(lk_publisher_peer_connection_task,
-                                        "lk_publisher", 20000, NULL, 7,
-                                        stack_memory, &task_buffer, 0);
-        }
+        StaticTask_t task_buffer;
+        StackType_t *stack_memory = (StackType_t *)heap_caps_malloc(
+            20000 * sizeof(StackType_t), MALLOC_CAP_SPIRAM);
+        assert(stack_memory != NULL);
+        publisher_pc_task_handle = xTaskCreateStaticPinnedToCore(
+            lk_publisher_peer_connection_task, "lk_publisher", 20000, NULL, 7,
+            stack_memory, &task_buffer, 0);
+        assert(publisher_pc_task_handle != NULL);
 #endif
-
-      } else if (publisher_status == 3) {
+        ESP_LOGI(LOG_TAG, "Sent add track request and started publisher");
+      } else if (get_publisher_status() == 3) {
+        ESP_LOGI(LOG_TAG, "Sending offer request for publisher");
         Livekit__SignalRequest r = LIVEKIT__SIGNAL_REQUEST__INIT;
         Livekit__SessionDescription s = LIVEKIT__SESSION_DESCRIPTION__INIT;
 
@@ -349,14 +356,17 @@ void lk_websocket(const char *room_url, const char *token) {
         lk_pack_and_send_signal_request(&r, client);
         free(publisher_signaling_buffer);
         publisher_signaling_buffer = NULL;
-        publisher_status = 0;
+        set_publisher_status(0);
+        ESP_LOGI(LOG_TAG, "Sent offer request for publisher");
       }
 
       if (subscriber_status != 0 && subscriber_answer_ice_ufrag != NULL) {
+        ESP_LOGI(LOG_TAG, "Sending answer request for subscriber");
         Livekit__SignalRequest r = LIVEKIT__SIGNAL_REQUEST__INIT;
         Livekit__SessionDescription s = LIVEKIT__SESSION_DESCRIPTION__INIT;
 
-        lk_populate_answer(answer_buffer, subscriber_status == 2);
+        lk_populate_answer(answer_buffer, ANSWER_BUFFER_SIZE,
+                           subscriber_status == 2);
         s.sdp = answer_buffer;
         s.type = (char *)SDP_TYPE_ANSWER;
         r.answer = &s;
@@ -364,9 +374,11 @@ void lk_websocket(const char *room_url, const char *token) {
 
         lk_pack_and_send_signal_request(&r, client);
         subscriber_status = 0;
+        ESP_LOGI(LOG_TAG, "Sent answer request for subscriber");
       }
 
       xSemaphoreGive(g_mutex);
+      ESP_LOGI(LOG_TAG, "Websocket released mutex");
     }
     vTaskDelay(pdMS_TO_TICKS(200));
   }

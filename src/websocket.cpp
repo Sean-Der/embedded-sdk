@@ -130,6 +130,7 @@ void lk_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
                candidate_obj->valuestring);
       if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
         if (ice_candidate_buffer != NULL) {
+          xSemaphoreGive(g_mutex);
           return;
         }
 

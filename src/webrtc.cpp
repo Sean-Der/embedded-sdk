@@ -78,7 +78,7 @@ static void subscriber_onconnectionstatechange_task(PeerConnectionState state,
 // what causes it to be fired - NOT
 static void subscriber_on_icecandidate_task(char *description,
                                             void *user_data) {
-  assert(xSemaphoreTake(g_mutex, 0) == pdFALSE);
+  // assert(xSemaphoreTake(g_mutex, 0) == pdFALSE);
   auto fingerprint = strstr(description, "a=fingerprint");
   subscriber_answer_fingerprint =
       strndup(fingerprint, (int)(strchr(fingerprint, '\r') - fingerprint));
@@ -90,16 +90,18 @@ static void subscriber_on_icecandidate_task(char *description,
   auto icePwd = strstr(description, "a=ice-pwd");
   subscriber_answer_ice_pwd =
       strndup(icePwd, (int)(strchr(icePwd, '\r') - icePwd));
-  xSemaphoreGive(g_mutex);
+  // xSemaphoreGive(g_mutex);
 }
 
 static void publisher_on_icecandidate_task(char *description, void *user_data) {
   // mutex should be held here already - NOT
   // assert(xSemaphoreTake(g_mutex, 0) == pdFALSE);
   if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
+    ESP_LOGI(LOG_TAG, "Publisher ICE got mutex");
     publisher_signaling_buffer = strdup(description);
     set_publisher_status(3);
     xSemaphoreGive(g_mutex);
+    ESP_LOGI(LOG_TAG, "Publisher ICE released mutex");
   }
 }
 

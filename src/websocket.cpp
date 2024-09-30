@@ -32,6 +32,10 @@ SemaphoreHandle_t g_mutex;
 // * 1 - Send an answer with audio removed
 // * 2 - Send an answer with audio enabled
 int subscriber_status = 0;
+void set_subscriber_status(int status) {
+  ESP_LOGI(LOG_TAG, "Setting subscriber status to %d", status);
+  subscriber_status = status;
+}
 
 extern int get_publisher_status();
 extern void set_publisher_status(int status);
@@ -143,15 +147,18 @@ void lk_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_OFFER:
       ESP_LOGI(LOG_TAG, "%s", packet->offer->sdp);
 
+      ESP_LOGI(LOG_TAG, "Offer handler getting mutex");
       if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
+        ESP_LOGI(LOG_TAG, "Offer handler got mutex");
         if (strstr(packet->offer->sdp, "m=audio")) {
-          subscriber_status = 2;
+          set_subscriber_status(2);
         } else {
-          subscriber_status = 1;
+          set_subscriber_status(1);
         }
 
         subscriber_offer_buffer = strdup(packet->offer->sdp);
         xSemaphoreGive(g_mutex);
+        ESP_LOGI(LOG_TAG, "Offer handler released mutex");
       }
 
       break;
@@ -373,7 +380,7 @@ void lk_websocket(const char *room_url, const char *token) {
         r.message_case = LIVEKIT__SIGNAL_REQUEST__MESSAGE_ANSWER;
 
         lk_pack_and_send_signal_request(&r, client);
-        subscriber_status = 0;
+        set_subscriber_status(0);
         ESP_LOGI(LOG_TAG, "Sent answer request for subscriber");
       }
 

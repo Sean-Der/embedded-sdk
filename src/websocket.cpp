@@ -293,12 +293,13 @@ void lk_websocket(const char *room_url, const char *token) {
       },
       NULL);
 #else
-  TaskHandle_t publisher_pc_task_handle = NULL;
-  TaskHandle_t subscriber_pc_task_handle = NULL;
-  BaseType_t ret = xTaskCreatePinnedToCore(lk_subscriber_peer_connection_task,
-                                           "lk_subscriber", 16384, NULL, 5,
-                                           &subscriber_pc_task_handle, 1);
-  assert(ret == pdPASS);
+  TaskHandle_t peer_connection_task_handle = NULL;
+  StaticTask_t task_buffer;
+  StackType_t *stack_memory = (StackType_t *)heap_caps_malloc(
+      20000 * sizeof(StackType_t), MALLOC_CAP_SPIRAM);
+
+  xTaskCreatePinnedToCore(lk_subscriber_peer_connection_task, "lk_subscriber",
+                          16384, NULL, 5, &peer_connection_task_handle, 1);
 #endif
 
   while (true) {
@@ -328,14 +329,11 @@ void lk_websocket(const char *room_url, const char *token) {
             },
             NULL);
 #else
-        StaticTask_t task_buffer;
-        StackType_t *stack_memory = (StackType_t *)heap_caps_malloc(
-            20000 * sizeof(StackType_t), MALLOC_CAP_SPIRAM);
-        assert(stack_memory != NULL);
-        publisher_pc_task_handle = xTaskCreateStaticPinnedToCore(
-            lk_publisher_peer_connection_task, "lk_publisher", 20000, NULL, 7,
-            stack_memory, &task_buffer, 0);
-        assert(publisher_pc_task_handle != NULL);
+        if (stack_memory) {
+          xTaskCreateStaticPinnedToCore(lk_publisher_peer_connection_task,
+                                        "lk_publisher", 20000, NULL, 7,
+                                        stack_memory, &task_buffer, 0);
+        }
 #endif
 
       } else if (get_publisher_status() == 3) {

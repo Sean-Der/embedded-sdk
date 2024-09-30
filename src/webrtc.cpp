@@ -212,7 +212,7 @@ PeerConnection *lk_create_peer_connection(int isPublisher) {
   return peer_connection;
 }
 
-static const char *sdp_no_audio =
+static const char sdp_no_audio[] =
     "v=0\r\n"
     "o=- 8611954123959290783 2 IN IP4 127.0.0.1\r\n"
     "s=-\r\n"
@@ -228,7 +228,7 @@ static const char *sdp_no_audio =
     "%s\r\n"  // a=fingeprint
     "a=sctp-port:5000\r\n";
 
-static const char *sdp_audio =
+static const char sdp_audio[] =
     "v=0\r\n"
     "o=- 8611954123959290783 2 IN IP4 127.0.0.1\r\n"
     "s=-\r\n"
@@ -254,14 +254,18 @@ static const char *sdp_audio =
     "%s\r\n"  // a=fingeprint
     "a=recvonly\r\n";
 
-void lk_populate_answer(char *answer, int include_audio) {
+void lk_populate_answer(char *answer, size_t answer_size, int include_audio) {
+  size_t ret = 0;
   if (include_audio) {
-    sprintf(answer, sdp_audio, subscriber_answer_ice_ufrag,
-            subscriber_answer_ice_pwd, subscriber_answer_fingerprint,
-            subscriber_answer_ice_ufrag, subscriber_answer_ice_pwd,
-            subscriber_answer_fingerprint);
+    ret = snprintf(answer, answer_size, sdp_audio, subscriber_answer_ice_ufrag,
+                   subscriber_answer_ice_pwd, subscriber_answer_fingerprint,
+                   subscriber_answer_ice_ufrag, subscriber_answer_ice_pwd,
+                   subscriber_answer_fingerprint);
   } else {
-    sprintf(answer, sdp_no_audio, subscriber_answer_ice_ufrag,
-            subscriber_answer_ice_pwd, subscriber_answer_fingerprint);
+    ret =
+        snprintf(answer, answer_size, sdp_no_audio, subscriber_answer_ice_ufrag,
+                 subscriber_answer_ice_pwd, subscriber_answer_fingerprint);
   }
+
+  assert(ret < answer_size);
 }

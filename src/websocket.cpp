@@ -131,11 +131,12 @@ void lk_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
                candidate_obj->valuestring);
       if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
         if (ice_candidate_buffer != NULL) {
-          xSemaphoreGive(g_mutex);
-          return;
+          ESP_LOGI(LOG_TAG, "ice_candidate_buffer is not NULL");
+        } else {
+          ESP_LOGI(LOG_TAG, "buffering ICE candidate");
+          ice_candidate_buffer = strdup(candidate_obj->valuestring);
         }
 
-        ice_candidate_buffer = strdup(candidate_obj->valuestring);
         xSemaphoreGive(g_mutex);
       }
 
@@ -354,7 +355,8 @@ void lk_websocket(const char *room_url, const char *token) {
         Livekit__SignalRequest r = LIVEKIT__SIGNAL_REQUEST__INIT;
         Livekit__SessionDescription s = LIVEKIT__SESSION_DESCRIPTION__INIT;
 
-        lk_populate_answer(answer_buffer, subscriber_status == 2);
+        lk_populate_answer(answer_buffer, ANSWER_BUFFER_SIZE,
+                           subscriber_status == 2);
         s.sdp = answer_buffer;
         s.type = (char *)SDP_TYPE_ANSWER;
         r.answer = &s;

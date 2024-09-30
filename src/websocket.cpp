@@ -18,7 +18,7 @@
 
 #define WEBSOCKET_URI_SIZE 1024
 #define ANSWER_BUFFER_SIZE 1024
-#define MTU_SIZE 1500
+#define WEBSOCKET_BUFFER_SIZE 2048
 #define LIVEKIT_PROTOCOL_VERSION 3
 
 static const char *SDP_TYPE_ANSWER = "answer";
@@ -257,7 +257,7 @@ void lk_websocket(const char *room_url, const char *token) {
   publisher_peer_connection = lk_create_peer_connection(/* isPublisher */ 1);
   char *answer_buffer = (char *)calloc(1, ANSWER_BUFFER_SIZE);
 
-  char ws_uri[WEBSOCKET_URI_SIZE];
+  char *ws_uri = (char *)malloc(WEBSOCKET_URI_SIZE);
   snprintf(ws_uri, WEBSOCKET_URI_SIZE,
            "%s/rtc?protocol=%d&access_token=%s&auto_subscribe=true", room_url,
            LIVEKIT_PROTOCOL_VERSION, token);
@@ -267,7 +267,7 @@ void lk_websocket(const char *room_url, const char *token) {
   memset(&ws_cfg, 0, sizeof(ws_cfg));
 
   ws_cfg.uri = ws_uri;
-  ws_cfg.buffer_size = MTU_SIZE;
+  ws_cfg.buffer_size = WEBSOCKET_BUFFER_SIZE;
   ws_cfg.disable_pingpong_discon = true;
   ws_cfg.reconnect_timeout_ms = 1000;
   ws_cfg.network_timeout_ms = 1000;
@@ -276,6 +276,7 @@ void lk_websocket(const char *room_url, const char *token) {
   esp_websocket_register_events(client, WEBSOCKET_EVENT_ANY,
                                 lk_websocket_event_handler, (void *)client);
   esp_websocket_client_start(client);
+  free(ws_uri);
 
 #ifdef LINUX_BUILD
   pthread_t subscriber_peer_connection_thread_handle;

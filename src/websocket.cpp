@@ -33,7 +33,8 @@ SemaphoreHandle_t g_mutex;
 // * 2 - Send an answer with audio enabled
 int subscriber_status = 0;
 
-extern int publisher_status;
+extern int get_publisher_status();
+extern void set_publisher_status(int status);
 extern char *publisher_signaling_buffer;
 
 // Offer + ICE Candidates. Captured in signaling thread
@@ -159,14 +160,14 @@ void lk_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_ANSWER:
       if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
         publisher_signaling_buffer = strdup(packet->answer->sdp);
-        publisher_status = 4;
+        set_publisher_status(4);
         xSemaphoreGive(g_mutex);
       }
 
       break;
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRACK_PUBLISHED:
       if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
-        publisher_status = 2;
+        set_publisher_status(2);
         xSemaphoreGive(g_mutex);
       }
 
@@ -203,7 +204,9 @@ static void lk_websocket_event_handler(void *handler_args,
 #endif
       break;
     case WEBSOCKET_EVENT_DATA: {
-      if (data->op_code == 0x08 && data->data_len == 2) {
+      if (data->op_code != 0x2) {
+        ESP_LOGD(LOG_TAG, "Message, opcode=%d, len=%d", data->op_code,
+                 data->data_len);
         return;
       }
 
@@ -300,7 +303,7 @@ void lk_websocket(const char *room_url, const char *token) {
 
   while (true) {
     if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
-      if (publisher_status == 1 && SEND_AUDIO) {
+      if (get_publisher_status() == 1 && SEND_AUDIO) {
         Livekit__SignalRequest r = LIVEKIT__SIGNAL_REQUEST__INIT;
         Livekit__AddTrackRequest a = LIVEKIT__ADD_TRACK_REQUEST__INIT;
 
@@ -312,7 +315,7 @@ void lk_websocket(const char *room_url, const char *token) {
         r.message_case = LIVEKIT__SIGNAL_REQUEST__MESSAGE_ADD_TRACK;
 
         lk_pack_and_send_signal_request(&r, client);
-        publisher_status = 0;
+        set_publisher_status(0);
 
 #ifdef LINUX_BUILD
         pthread_t publisher_peer_connection_thread_handle;
@@ -332,7 +335,7 @@ void lk_websocket(const char *room_url, const char *token) {
         }
 #endif
 
-      } else if (publisher_status == 3) {
+      } else if (get_publisher_status() == 3) {
         Livekit__SignalRequest r = LIVEKIT__SIGNAL_REQUEST__INIT;
         Livekit__SessionDescription s = LIVEKIT__SESSION_DESCRIPTION__INIT;
 
@@ -344,7 +347,7 @@ void lk_websocket(const char *room_url, const char *token) {
         lk_pack_and_send_signal_request(&r, client);
         free(publisher_signaling_buffer);
         publisher_signaling_buffer = NULL;
-        publisher_status = 0;
+        set_publisher_status(0);
       }
 
       if (subscriber_status != 0 && subscriber_answer_ice_ufrag != NULL) {

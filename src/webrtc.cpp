@@ -37,6 +37,15 @@ char *publisher_signaling_buffer = NULL;
 PeerConnection *subscriber_peer_connection = NULL;
 PeerConnection *publisher_peer_connection = NULL;
 
+int get_publisher_status() {
+  return publisher_status;
+}
+
+void set_publisher_status(int status) {
+  ESP_LOGI(LOG_TAG, "Setting publisher status to %d", status);
+  publisher_status = status;
+}
+
 static void lk_publisher_onconnectionstatechange_task(PeerConnectionState state,
                                                       void *user_data) {
   ESP_LOGI(LOG_TAG, "Publisher PeerConnectionState: %s",
@@ -56,7 +65,7 @@ static void lk_subscriber_onconnectionstatechange_task(
 
   // Subscriber has connected, start connecting publisher
   if (state == PEER_CONNECTION_COMPLETED) {
-    publisher_status = 1;
+    set_publisher_status(1);
   } else if (state == PEER_CONNECTION_DISCONNECTED ||
              state == PEER_CONNECTION_CLOSED) {
 #ifndef LINUX_BUILD
@@ -85,7 +94,7 @@ static void lk_subscriber_on_icecandidate_task(char *description,
 static void lk_publisher_on_icecandidate_task(char *description,
                                               void *user_data) {
   publisher_signaling_buffer = strdup(description);
-  publisher_status = 3;
+  set_publisher_status(3);
 }
 
 // Given a Remote Description + ICE Candidate do a Set+Free on a PeerConnection
@@ -144,14 +153,14 @@ void lk_publisher_peer_connection_task(void *user_data) {
     auto state = peer_connection_get_state(publisher_peer_connection);
     if (state != PEER_CONNECTION_COMPLETED &&
         xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
-      if (publisher_status == 2) {
+      if (get_publisher_status() == 2) {
         peer_connection_create_offer(publisher_peer_connection);
-        publisher_status = 0;
-      } else if (publisher_status == 4 &&
+        set_publisher_status(0);
+      } else if (get_publisher_status() == 4 &&
                  lk_process_signaling_values(
                      publisher_peer_connection, &ice_candidate_buffer,
                      &publisher_signaling_buffer) == 2) {
-        publisher_status = 0;
+        set_publisher_status(0);
       }
       xSemaphoreGive(g_mutex);
     }

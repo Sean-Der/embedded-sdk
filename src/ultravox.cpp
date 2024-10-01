@@ -139,6 +139,17 @@ static std::string create_call(const CallRequest &request,
   return join_url_str;
 }
 
+struct LiveKitTaskParams {
+  std::string room_url;
+  std::string token;
+};
+
+static void lk_websocket_thunk(void *pvParameters) {
+  auto params = static_cast<LiveKitTaskParams *>(pvParameters);
+  lk_websocket(params->room_url.c_str(), params->token.c_str());
+  delete params;
+}
+
 static void uv_handle_websocket_data(const char *data, size_t len) {
   std::string data_str(data, len);
   ESP_LOGI(LOG_TAG, "Received data: %s", data_str.c_str());
@@ -165,7 +176,10 @@ static void uv_handle_websocket_data(const char *data, size_t len) {
     return;
   }
 
-  lk_websocket(room_url->valuestring, token->valuestring);
+  LiveKitTaskParams *params = new LiveKitTaskParams();
+  params->room_url = room_url->valuestring;
+  params->token = token->valuestring;
+  xTaskCreate(lk_websocket_thunk, "lk_websocket", 4096, params, 5, NULL);
   cJSON_Delete(room_info);
 }
 
@@ -181,11 +195,9 @@ static void uv_websocket_event_handler(void *handler_args,
       ESP_LOGI(LOG_TAG, "WEBSOCKET_EVENT_DISCONNECTED");
       break;
     case WEBSOCKET_EVENT_DATA: {
-      if (data->op_code == 0x08 && data->data_len == 2) {
-        return;
+      if (data->op_code == 0x01 && data->data_len > 0) {
+        uv_handle_websocket_data((const char *)data->data_ptr, data->data_len);
       }
-
-      uv_handle_websocket_data((const char *)data->data_ptr, data->data_len);
       break;
     }
     case WEBSOCKET_EVENT_ERROR:

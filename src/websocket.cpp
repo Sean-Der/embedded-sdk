@@ -145,11 +145,8 @@ void lk_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
       break;
     }
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_OFFER:
-      ESP_LOGI(LOG_TAG, "%s", packet->offer->sdp);
 
-      ESP_LOGI(LOG_TAG, "Offer handler getting mutex");
       if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
-        ESP_LOGI(LOG_TAG, "Offer handler got mutex");
         if (strstr(packet->offer->sdp, "m=audio")) {
           set_subscriber_status(2);
         } else {
@@ -158,7 +155,6 @@ void lk_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
 
         subscriber_offer_buffer = strdup(packet->offer->sdp);
         xSemaphoreGive(g_mutex);
-        ESP_LOGI(LOG_TAG, "Offer handler released mutex");
       }
 
       break;
@@ -166,20 +162,30 @@ void lk_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE__NOT_SET:
       break;
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_JOIN:
+      ESP_LOGI(LOG_TAG, "Join complete, room sid: %s", packet->join->room->sid);
       break;
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_ANSWER:
+      ESP_LOGI(LOG_TAG, "Answer handler getting mutex");
       if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
+        ESP_LOGI(LOG_TAG, "Answer handler got mutex");
+        ESP_LOGI(LOG_TAG, "Set publisher signaling buffer from answer");
         publisher_signaling_buffer = strdup(packet->answer->sdp);
         set_publisher_status(4);
         xSemaphoreGive(g_mutex);
+        ESP_LOGI(LOG_TAG, "Answer handler released mutex");
       }
       break;
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_UPDATE:
+      ESP_LOGI(LOG_TAG, "Participants changed, participants: %d",
+               packet->update->n_participants);
       break;
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRACK_PUBLISHED:
+      ESP_LOGI(LOG_TAG, "Track publish handler getting mutex");
       if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
+        ESP_LOGI(LOG_TAG, "Track publish handler got mutex");
         set_publisher_status(2);
         xSemaphoreGive(g_mutex);
+        ESP_LOGI(LOG_TAG, "Track publish handler released mutex");
       }
       break;
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_LEAVE:
@@ -190,8 +196,13 @@ void lk_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_MUTE:
       break;
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_SPEAKERS_CHANGED:
+      ESP_LOGI(LOG_TAG, "Speakers changed, speakers: %d",
+               packet->speakers_changed->n_speakers);
       break;
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_ROOM_UPDATE:
+      ESP_LOGI(LOG_TAG, "Room update, sid: %s, participants: %ld",
+               packet->room_update->room->sid,
+               packet->room_update->room->num_participants);
       break;
     default:
       ESP_LOGI(LOG_TAG, "Unknown message type received.");
@@ -246,12 +257,15 @@ static void lk_websocket_event_handler(void *handler_args,
 
 void lk_pack_and_send_signal_request(const Livekit__SignalRequest *r,
                                      esp_websocket_client *client) {
-  ESP_LOGI(LOG_TAG, "Send %s", request_message_to_string(r->message_case));
   auto size = livekit__signal_request__get_packed_size(r);
+  ESP_LOGI(LOG_TAG, "Send %s (%d)", request_message_to_string(r->message_case),
+           size);
   auto *buffer = (uint8_t *)malloc(size);
   livekit__signal_request__pack(r, buffer);
+  ESP_LOGI(LOG_TAG, "Packed signal request");
   auto len = esp_websocket_client_send_bin(client, (char *)buffer, size,
                                            portMAX_DELAY);
+  ESP_LOGI(LOG_TAG, "Sent signal request");
   free(buffer);
   if (len == -1) {
     ESP_LOGI(LOG_TAG, "Failed to send message.");
@@ -307,14 +321,14 @@ void lk_websocket(const char *room_url, const char *token) {
   TaskHandle_t subscriber_pc_task_handle = NULL;
   BaseType_t ret = xTaskCreatePinnedToCore(lk_subscriber_peer_connection_task,
                                            "lk_subscriber", 8192, NULL, 5,
-                                           &subscriber_pc_task_handle, 1);
+                                           &subscriber_pc_task_handle, 0);  // 1
   assert(ret == pdPASS);
 #endif
 
   while (true) {
-    ESP_LOGI(LOG_TAG, "Websocket getting mutex");
+    // ESP_LOGI(LOG_TAG, "Websocket getting mutex");
     if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
-      ESP_LOGI(LOG_TAG, "Websocket got mutex");
+      // ESP_LOGI(LOG_TAG, "Websocket got mutex");
       if (get_publisher_status() == 1 && SEND_AUDIO) {
         ESP_LOGI(LOG_TAG, "Sending add track request and starting publisher");
         Livekit__SignalRequest r = LIVEKIT__SIGNAL_REQUEST__INIT;
@@ -352,6 +366,9 @@ void lk_websocket(const char *room_url, const char *token) {
         ESP_LOGI(LOG_TAG, "Sent add track request and started publisher");
       } else if (get_publisher_status() == 3) {
         ESP_LOGI(LOG_TAG, "Sending offer request for publisher");
+
+        // ESP_LOGI(LOG_TAG, "Publisher signaling buffer: %s",
+        //          publisher_signaling_buffer);
         Livekit__SignalRequest r = LIVEKIT__SIGNAL_REQUEST__INIT;
         Livekit__SessionDescription s = LIVEKIT__SESSION_DESCRIPTION__INIT;
 
@@ -374,18 +391,20 @@ void lk_websocket(const char *room_url, const char *token) {
 
         lk_populate_answer(answer_buffer, ANSWER_BUFFER_SIZE,
                            subscriber_status == 2);
+        // ESP_LOGI(LOG_TAG, "Subscriber signaling buffer: %s", answer_buffer);
         s.sdp = answer_buffer;
         s.type = (char *)SDP_TYPE_ANSWER;
         r.answer = &s;
         r.message_case = LIVEKIT__SIGNAL_REQUEST__MESSAGE_ANSWER;
-
+        // ESP_LOGI(LOG_TAG, "About to pack and send answer request");
         lk_pack_and_send_signal_request(&r, client);
+        // ESP_LOGI(LOG_TAG, "Packed and sent answer request for subscriber");
         set_subscriber_status(0);
         ESP_LOGI(LOG_TAG, "Sent answer request for subscriber");
       }
 
       xSemaphoreGive(g_mutex);
-      ESP_LOGI(LOG_TAG, "Websocket released mutex");
+      // ESP_LOGI(LOG_TAG, "Websocket released mutex");
     }
     vTaskDelay(pdMS_TO_TICKS(200));
   }

@@ -16,6 +16,8 @@
 #define OPUS_OUT_BUFFER_SIZE 3840  // 1276 bytes is recommended by opus_encode
 extern SemaphoreHandle_t g_mutex;
 
+extern int subscriber_status;
+
 char *subscriber_offer_buffer = NULL;
 char *ice_candidate_buffer = NULL;
 
@@ -95,14 +97,28 @@ static void subscriber_on_icecandidate_task(char *description,
 
 static void publisher_on_icecandidate_task(char *description, void *user_data) {
   // mutex should be held here already - NOT
-  // assert(xSemaphoreTake(g_mutex, 0) == pdFALSE);
+  ESP_LOGI(LOG_TAG, "Publisher ICE getting mutex");
   if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
     ESP_LOGI(LOG_TAG, "Publisher ICE got mutex");
+    ESP_LOGI(LOG_TAG, "Set publisher local ICE candidate signaling buffer");
     publisher_signaling_buffer = strdup(description);
     set_publisher_status(3);
     xSemaphoreGive(g_mutex);
     ESP_LOGI(LOG_TAG, "Publisher ICE released mutex");
   }
+}
+
+static void subscriber_dc_onopen(void *user_data) {
+  ESP_LOGI(LOG_TAG, "Subscriber DC onopen");
+}
+
+static void subscriber_dc_onclose(void *user_data) {
+  ESP_LOGI(LOG_TAG, "Subscriber DC onclose");
+}
+
+static void subscriber_dc_onmessage(char *msg, size_t len, void *user_data,
+                                    uint16_t sid) {
+  ESP_LOGI(LOG_TAG, "Subscriber DC onmessage: %s", msg);
 }
 
 // Given a Remote Description + ICE Candidate do a Set+Free on a PeerConnection
@@ -118,12 +134,14 @@ void process_signaling_values(PeerConnection *peer_connection,
   // Only call add_ice_candidate when not completed. Calling it on a connected
   // PeerConnection will break it
   if (state != PEER_CONNECTION_COMPLETED && *ice_candidate != NULL) {
+    ESP_LOGI(LOG_TAG, "Adding ICE Candidate");
     peer_connection_add_ice_candidate(peer_connection, *ice_candidate);
     free(*ice_candidate);
     *ice_candidate = NULL;
   }
 
   if (*remote_description != NULL) {
+    ESP_LOGI(LOG_TAG, "Setting Remote Description");
     peer_connection_set_remote_description(peer_connection,
                                            *remote_description);
     free(*remote_description);
@@ -133,25 +151,26 @@ void process_signaling_values(PeerConnection *peer_connection,
 
 void lk_subscriber_peer_connection_task(void *user_data) {
   while (1) {
-    ESP_LOGI(LOG_TAG, "Subscriber getting mutex");
+    // ESP_LOGI(LOG_TAG, "Subscriber getting mutex");
     if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
-      ESP_LOGI(LOG_TAG, "Subscriber got mutex");
+      // ESP_LOGI(LOG_TAG, "Subscriber got mutex");
       process_signaling_values(subscriber_peer_connection,
                                &ice_candidate_buffer, &subscriber_offer_buffer);
       xSemaphoreGive(g_mutex);
     }
-    ESP_LOGI(LOG_TAG, "Subscriber released mutex, about to loop");
+
+    // ESP_LOGI(LOG_TAG, "Subscriber released mutex, about to loop");
     peer_connection_loop(subscriber_peer_connection);
-    ESP_LOGI(LOG_TAG, "Subscriber loop done");
+    // ESP_LOGI(LOG_TAG, "Subscriber loop done");
     vTaskDelay(pdMS_TO_TICKS(1));
   }
 }
 
 void lk_publisher_peer_connection_task(void *user_data) {
   while (1) {
-    ESP_LOGI(LOG_TAG, "Publisher getting mutex");
+    // ESP_LOGI(LOG_TAG, "Publisher getting mutex");
     if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
-      ESP_LOGI(LOG_TAG, "Publisher got mutex");
+      // ESP_LOGI(LOG_TAG, "Publisher got mutex");
       if (get_publisher_status() == 2) {
         peer_connection_create_offer(publisher_peer_connection);
         set_publisher_status(0);
@@ -162,9 +181,9 @@ void lk_publisher_peer_connection_task(void *user_data) {
       }
       xSemaphoreGive(g_mutex);
     }
-    ESP_LOGI(LOG_TAG, "Publisher released mutex, about to loop");
+    //   ESP_LOGI(LOG_TAG, "Publisher released mutex, about to loop");
     peer_connection_loop(publisher_peer_connection);
-    ESP_LOGI(LOG_TAG, "Publisher loop done");
+    //  ESP_LOGI(LOG_TAG, "Publisher loop done");
     vTaskDelay(pdMS_TO_TICKS(1));
   }
 
@@ -249,6 +268,8 @@ PeerConnection *lk_create_peer_connection(int isPublisher) {
         peer_connection, subscriber_onconnectionstatechange_task);
     peer_connection_onicecandidate(peer_connection,
                                    subscriber_on_icecandidate_task);
+    peer_connection_ondatachannel(peer_connection, subscriber_dc_onmessage,
+                                  subscriber_dc_onopen, subscriber_dc_onclose);
   }
 
   return peer_connection;

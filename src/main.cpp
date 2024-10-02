@@ -9,7 +9,7 @@
 
 const char *SANTA_SYSTEM_PROMPT =
     R"FOO(You are Santa Claus. Your job is to make kids across the world happy and experience the joy of Christmas.)FOO";
-const char *SANTA_VOICE = "terrence";
+const char *SANTA_VOICE = "Santa";
 
 extern "C" void app_main(void) {
   esp_err_t ret = nvs_flash_init();

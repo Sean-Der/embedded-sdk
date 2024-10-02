@@ -111,10 +111,13 @@ void lk_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
   ESP_LOGI(LOG_TAG, "Recv %s",
            response_message_to_string(packet->message_case));
   switch (packet->message_case) {
+    case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_JOIN:
+      ESP_LOGI(LOG_TAG, "Join complete, room sid: %s", packet->join->room->sid);
+      break;
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_TRICKLE: {
       // Skip TCP ICE Candidates
       if (strstr(packet->trickle->candidateinit, "tcp") != NULL) {
-        ESP_LOGI(LOG_TAG, "skipping tcp ice candidate");
+        ESP_LOGD(LOG_TAG, "skipping tcp ice candidate");
         return;
       }
 
@@ -186,7 +189,6 @@ void lk_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_SPEAKERS_CHANGED:
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_ROOM_UPDATE:
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE__NOT_SET:
-    case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_JOIN:
     case LIVEKIT__SIGNAL_RESPONSE__MESSAGE_UPDATE:
       break;
     default:

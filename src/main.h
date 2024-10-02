@@ -1,8 +1,17 @@
 #include <peer.h>
 
+#include <string>
+
 #define LOG_TAG "embedded-sdk"
 #define BUFFER_SAMPLES 320
 #define SAMPLE_RATE 8000
+
+struct CallRequest {
+  std::string system_prompt;
+  std::string voice;
+};
+
+void uv_run(const CallRequest &request, const char *api_key);
 
 PeerConnection *lk_create_peer_connection(int isPublisher);
 void lk_websocket(const char *url, const char *token);

@@ -12,9 +12,9 @@ if(IDF_TARGET STREQUAL linux)
 		REQUIRES protobuf-c esp_websocket_client peer esp-libopus)
 else()
 	idf_component_register(
-		SRCS ${COMMON_SRC} "wifi.cpp" "media.cpp"
+		SRCS ${COMMON_SRC} "wifi.cpp" "media.cpp" "ultravox.cpp"
 	  INCLUDE_DIRS "." "../deps/livekit-protocol-generated"
-		REQUIRES driver protobuf-c esp_wifi nvs_flash esp_websocket_client peer esp_psram esp-libopus)
+		REQUIRES driver protobuf-c esp_wifi nvs_flash esp_http_client esp_websocket_client peer esp_psram esp-libopus)
 endif()
 
 idf_component_get_property(lib peer COMPONENT_LIB)

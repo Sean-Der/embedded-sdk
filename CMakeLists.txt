@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.19)
 
 # Audio Sending is implemented, but not performant enough yet
-add_compile_definitions(SEND_AUDIO=0)
+add_compile_definitions(SEND_AUDIO=1)
 
 if(NOT IDF_TARGET STREQUAL linux)
   if(NOT DEFINED ENV{WIFI_SSID} OR NOT DEFINED ENV{WIFI_PASSWORD})
@@ -12,12 +12,12 @@ if(NOT IDF_TARGET STREQUAL linux)
   add_compile_definitions(WIFI_PASSWORD="$ENV{WIFI_PASSWORD}")
 endif()
 
-if(NOT DEFINED ENV{LIVEKIT_URL} OR NOT DEFINED ENV{LIVEKIT_TOKEN})
-  message(FATAL_ERROR "Env variable LIVEKIT_URL and LIVEKIT_TOKEN must be set")
-endif()
+#if(NOT DEFINED ENV{LIVEKIT_URL} OR NOT DEFINED ENV{LIVEKIT_TOKEN})
+#  message(FATAL_ERROR "Env variable LIVEKIT_URL and LIVEKIT_TOKEN must be set")
+#endif()
 
-add_compile_definitions(LIVEKIT_URL="$ENV{LIVEKIT_URL}")
-add_compile_definitions(LIVEKIT_TOKEN="$ENV{LIVEKIT_TOKEN}")
+add_compile_definitions(UVAPI_API_KEY="$ENV{UVAPI_API_KEY}")
+
 
 set(COMPONENTS src)
 set(EXTRA_COMPONENT_DIRS "src" "components/srtp" "components/peer" "components/esp-libopus" "components/esp-protocols/components/esp_websocket_client")

@@ -3,8 +3,6 @@
 #include <string>
 
 #define LOG_TAG "embedded-sdk"
-#define BUFFER_SAMPLES 320
-#define SAMPLE_RATE 8000
 
 struct CallRequest {
   std::string system_prompt;

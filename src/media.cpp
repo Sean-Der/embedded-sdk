@@ -24,17 +24,18 @@
 */
 #define OPUS_ENCODER_BITRATE 30000
 #define OPUS_ENCODER_COMPLEXITY 0
-#define BUFFER_SAMPLES 320
+#define BUFFER_SAMPLES 640
 
 /* Example configurations */
 // #define EXAMPLE_RECV_BUF_SIZE (2400)
+#define EXAMPLE_NUM_CHANNELS 1
 #define EXAMPLE_SAMPLE_RATE (8000)
 #define SAMPLE_RATE EXAMPLE_SAMPLE_RATE
 #define EXAMPLE_MCLK_MULTIPLE \
   i2s_mclk_multiple_t(        \
       384)  // If not using 24-bit data width, 256 should be enough
 #define EXAMPLE_MCLK_FREQ_HZ (EXAMPLE_SAMPLE_RATE * EXAMPLE_MCLK_MULTIPLE)
-#define EXAMPLE_VOICE_VOLUME 99  // 80 CONFIG_EXAMPLE_VOICE_VOLUME
+#define EXAMPLE_VOICE_VOLUME 90  // 80 CONFIG_EXAMPLE_VOICE_VOLUME
 #if CONFIG_EXAMPLE_MODE_ECHO
 #define EXAMPLE_MIC_GAIN CONFIG_EXAMPLE_MIC_GAIN
 #endif
@@ -84,6 +85,7 @@ static esp_err_t es8311_codec_init(void) {
           {
               .clk_speed = 100000,
           },
+      .clk_flags = 0,
   };
   ESP_RETURN_ON_ERROR(i2c_param_config(I2C_NUM, &es_i2c_cfg), TAG,
                       "config i2c failed");
@@ -128,10 +130,12 @@ static esp_err_t i2s_driver_init(void) {
       I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM, I2S_ROLE_MASTER);
   chan_cfg.auto_clear = true;  // Auto clear the legacy data in the DMA buffer
   ESP_ERROR_CHECK(i2s_new_channel(&chan_cfg, &tx_handle, &rx_handle));
+  i2s_slot_mode_t slot_mode =
+      EXAMPLE_NUM_CHANNELS == 1 ? I2S_SLOT_MODE_MONO : I2S_SLOT_MODE_STEREO;
   i2s_std_config_t std_cfg = {
       .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(EXAMPLE_SAMPLE_RATE),
       .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT,
-                                                      I2S_SLOT_MODE_MONO),  //?
+                                                      slot_mode),
       .gpio_cfg =
           {
               .mclk = I2S_MCK_IO,
@@ -221,7 +225,8 @@ OpusDecoder *opus_decoder = NULL;
 
 void lk_init_audio_decoder() {
   int decoder_error = 0;
-  opus_decoder = opus_decoder_create(SAMPLE_RATE, 2, &decoder_error);
+  opus_decoder =
+      opus_decoder_create(SAMPLE_RATE, EXAMPLE_NUM_CHANNELS, &decoder_error);
   if (decoder_error != OPUS_OK) {
     printf("Failed to create Opus decoder");
     return;

@@ -121,6 +121,11 @@ void lk_websocket_handle_livekit_response(Livekit__SignalResponse *packet) {
         return;
       }
 
+      if (!strchr(packet->trickle->candidateinit, '.')) {
+        ESP_LOGI(LOG_TAG, "skipping non-IPv4 candidate");
+        return;
+      }
+
       auto parsed = cJSON_Parse(packet->trickle->candidateinit);
       if (!parsed) {
         ESP_LOGI(LOG_TAG, "failed to parse ice_candidate_init");

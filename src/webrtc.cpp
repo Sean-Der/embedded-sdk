@@ -1,5 +1,6 @@
 #ifndef LINUX_BUILD
-#include <driver/i2s.h>
+#include <driver/i2s_pdm.h>
+#include <driver/i2s_std.h>
 #include <opus.h>
 #endif
 
@@ -146,7 +147,9 @@ void lk_subscriber_peer_connection_task(void *user_data) {
 
 void lk_publisher_peer_connection_task(void *user_data) {
 #ifndef LINUX_BUILD
+#if SEND_AUDIO
   lk_init_audio_encoder();
+#endif
 #endif
 
   while (1) {
@@ -166,7 +169,12 @@ void lk_publisher_peer_connection_task(void *user_data) {
     }
 
 #ifndef LINUX_BUILD
+#if SEND_AUDIO
     lk_send_audio(publisher_peer_connection);
+#endif
+#if SEND_VIDEO
+    lk_send_video(publisher_peer_connection);
+#endif
 #endif
 
     peer_connection_loop(publisher_peer_connection);
@@ -177,8 +185,8 @@ void lk_publisher_peer_connection_task(void *user_data) {
 PeerConnection *lk_create_peer_connection(int isPublisher) {
   PeerConfiguration peer_connection_config = {
       .ice_servers = {},
-      .audio_codec = CODEC_OPUS,
-      .video_codec = CODEC_NONE,
+      .audio_codec = CODEC_NONE,
+      .video_codec = CODEC_H264,
       .datachannel = isPublisher ? DATA_CHANNEL_NONE : DATA_CHANNEL_STRING,
       .onaudiotrack = [](uint8_t *data, size_t size, void *userdata) -> void {
 #ifndef LINUX_BUILD

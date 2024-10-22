@@ -1,3 +1,5 @@
 dependencies:
+  espressif/esp32-camera: "^2.0.12"
+  espressif/esp_h264: "^1.0.4"
   idf:
     version: ">=4.1.0"

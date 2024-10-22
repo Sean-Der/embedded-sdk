@@ -5,6 +5,8 @@
 #include <peer.h>
 
 #ifndef LINUX_BUILD
+#include <esp_h264_enc_single_sw.h>
+
 #include "nvs_flash.h"
 
 extern "C" void app_main(void) {
@@ -18,8 +20,24 @@ extern "C" void app_main(void) {
 
   ESP_ERROR_CHECK(esp_event_loop_create_default());
   peer_init();
+
+#if SEND_AUDIO
   lk_init_audio_capture();
   lk_init_audio_decoder();
+#endif
+
+#ifdef SEND_VIDEO
+  if (lk_init_video_capture() != ESP_OK) {
+    printf("Camera Init Failed\n");
+    return;
+  }
+
+  if (lk_init_video_encoder() != ESP_H264_ERR_OK) {
+    printf("Video Encoder failed to start\n");
+    return;
+  }
+#endif
+
   lk_wifi();
   lk_websocket(LIVEKIT_URL, LIVEKIT_TOKEN);
 }

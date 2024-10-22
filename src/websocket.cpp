@@ -304,13 +304,20 @@ void lk_websocket(const char *room_url, const char *token) {
 
   while (true) {
     if (xSemaphoreTake(g_mutex, portMAX_DELAY) == pdTRUE) {
-      if (get_publisher_status() == 1 && SEND_AUDIO) {
+      if (get_publisher_status() == 1 && (SEND_AUDIO || SEND_VIDEO)) {
         Livekit__SignalRequest r = LIVEKIT__SIGNAL_REQUEST__INIT;
         Livekit__AddTrackRequest a = LIVEKIT__ADD_TRACK_REQUEST__INIT;
 
+#if SEND_AUDIO
         a.cid = (char *)"microphone";
         a.name = (char *)"microphone";
         a.source = LIVEKIT__TRACK_SOURCE__MICROPHONE;
+#endif
+#if SEND_VIDEO
+        a.cid = (char *)"camera";
+        a.name = (char *)"camera";
+        a.source = LIVEKIT__TRACK_SOURCE__CAMERA;
+#endif
 
         r.add_track = &a;
         r.message_case = LIVEKIT__SIGNAL_REQUEST__MESSAGE_ADD_TRACK;
